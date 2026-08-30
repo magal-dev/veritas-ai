@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql+asyncpg://tcc:tcc@127.0.0.1:5433/tcc_pjecalc"
+    database_url: str = "postgresql+asyncpg://veritas:veritas@127.0.0.1:5433/veritas_ai"
     job_ttl_seconds: int = 900
     max_upload_mb: int = 80
     gemini_api_key: str = ""

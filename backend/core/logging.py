@@ -9,4 +9,4 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
-logger = logging.getLogger("tcc_pjecalc")
+logger = logging.getLogger("veritas_ai")

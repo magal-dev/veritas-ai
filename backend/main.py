@@ -18,9 +18,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="TCC PJe-Calc — Extração Inteligente",
+    title="Veritas AI",
     description=(
-        "Fundação da API. Jobs são stateless (memória + TTL). "
+        "API do Veritas AI. Jobs são stateless (memória + TTL). "
         "PostgreSQL guarda só metadados operacionais, nunca conteúdo processual."
     ),
     version="0.1.0",

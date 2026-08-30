@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tcc-pjecalc-backend"
+name = "veritas-ai-backend"
 version = "0.1.0"
-description = "Fundação FastAPI do TCC de extração processual para PJe-Calc"
+description = "Backend FastAPI do Veritas AI — extração processual para PJe-Calc (TCC)"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115.0",

@@ -1,10 +1,12 @@
-# AGENTS.md — TCC Extração Inteligente para PJe-Calc
+# AGENTS.md — Veritas AI
 
 Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar código, arquitetura ou texto acadêmico. Não invente stack, persistência, autenticação ou layout oficial do PJe-Calc.
 
 ## 1. Identidade
 
-**Nome:** TCC — Extração Inteligente de Dados Processuais para PJe-Calc
+**Nome do projeto:** Veritas AI
+
+**Contexto acadêmico (TCC):** Extração Inteligente de Dados Processuais para PJe-Calc
 
 Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera planilha para importação no PJe-Calc. Depois do download, descarta tudo.
 
@@ -185,7 +187,7 @@ A API funciona **sem** Postgres: jobs e Excel continuam in-memory; só a linha d
 ## 11. Como responder e implementar (para agentes)
 
 1. Identifique o problema exato.
-2. Responda no contexto deste TCC, não com teoria genérica.
+2. Responda no contexto do Veritas AI (TCC), não com teoria genérica.
 3. Solução prática e justificável, dentro da stack e das pastas.
 4. Se houver alternativas, compare prós/contras e recomende.
 5. Arquitetura/fluxo: tópicos, etapas ou tabelas.

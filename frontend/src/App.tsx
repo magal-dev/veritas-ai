@@ -91,7 +91,7 @@ export default function App() {
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = 'pjecalc-provisorio.xlsx'
+      anchor.download = 'veritas-pjecalc-provisorio.xlsx'
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
@@ -111,7 +111,7 @@ export default function App() {
       <header className="border-b border-rule bg-ink text-paper-2">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-paper/70">TCC · PJe-Calc</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-paper/70">Veritas AI · PJe-Calc</p>
             <h1 className="font-display text-2xl sm:text-3xl mt-1">
               Extração inteligente de dados processuais
             </h1>

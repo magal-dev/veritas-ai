@@ -1,4 +1,4 @@
-Interface React (Vite) do TCC de extração para PJe-Calc.
+Interface React (Vite) do **Veritas AI** — extração processual para PJe-Calc (TCC).
 
 Comandos na pasta `frontend`:
 

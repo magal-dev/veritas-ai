@@ -61,7 +61,7 @@ class ProvisionalExcelBuilder(ExcelBuilder):
         self._header(sheet, CARTAO_COLUMNS)
         sheet["A1"].comment = Comment(
             f"HIPÓTESE {LAYOUT_VERSION} — não é o layout oficial do PJe-Calc",
-            "tcc-pjecalc",
+            "veritas-ai",
         )
         for row_index, entry in enumerate(extraction.time_cards, start=2):
             sheet.cell(row_index, 1, entry.competence)

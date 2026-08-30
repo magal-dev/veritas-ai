@@ -1,6 +1,8 @@
-# Extração Inteligente de Dados Processuais para PJe-Calc
+# Veritas AI
 
-Trabalho de Conclusão de Curso: aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha no formato esperado pelo PJe-Calc.
+Extração inteligente de dados processuais para o PJe-Calc — projeto de Trabalho de Conclusão de Curso.
+
+Aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha no formato esperado pelo PJe-Calc.
 
 Este repositório está na **fundação**: estrutura, contratos, fluxo de interface e descarte de dados. A extração com Gemini e a triagem em três camadas ainda não estão ligadas — os módulos existem como stubs tipados.
 
@@ -53,4 +55,4 @@ Nenhum dado extraído do PDF é persistido. O PostgreSQL não recebe texto, JSON
 
 ## Licença
 
-Uso acadêmico do TCC. Defina a licença quando o repositório público for criado.
+Uso acadêmico (TCC). Defina a licença quando o repositório público for criado.
