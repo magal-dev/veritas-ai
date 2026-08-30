@@ -1,0 +1,22 @@
+# Postgres local somente para metadados operacionais.
+# Nenhum dado extraído de PDF deve ser gravado neste banco.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tcc
+      POSTGRES_PASSWORD: tcc
+      POSTGRES_DB: tcc_pjecalc
+    ports:
+      - "5433:5432"
+    volumes:
+      - tcc_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tcc -d tcc_pjecalc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tcc_pg_data:
