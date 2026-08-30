@@ -8,6 +8,111 @@ Este repositório está na **fundação**: estrutura, contratos, fluxo de interf
 
 Leia [AGENTS.md](AGENTS.md) antes de implementar. Contratos: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md) e [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md).
 
+Repositório: https://github.com/magal-dev/veritas-ai
+
+## Estrutura do repositório
+
+Visão geral de como as pastas se relacionam no fluxo **upload → processamento → revisão → download → descarte**:
+
+```mermaid
+flowchart TB
+  subgraph root [Raiz]
+    AGENTS[AGENTS.md]
+    DOCS[docs/]
+    COMPOSE[docker-compose.yml]
+  end
+
+  subgraph frontend [frontend/ — React]
+  UI[src/components + App.tsx]
+  API_CLIENT[src/lib/api.ts]
+  end
+
+  subgraph backend [backend/ — FastAPI]
+    API[api/]
+    SVC[services/]
+    PIPE[pipeline/]
+    SCH[schemas/]
+    MOD[models/]
+    REPO[repositories/]
+    CORE[core/]
+    ALE[alembic/]
+  end
+
+  subgraph data [Persistência]
+    MEM[(Sessão in-memory)]
+    PG[(PostgreSQL — só metadados)]
+  end
+
+  UI --> API_CLIENT
+  API_CLIENT --> API
+  API --> SVC
+  SVC --> PIPE
+  SVC --> MEM
+  PIPE --> SCH
+  SVC --> REPO
+  REPO --> MOD
+  MOD --> PG
+  CORE --> API
+  CORE --> REPO
+  DOCS -.-> SCH
+  DOCS -.-> PIPE
+  ALE --> PG
+  COMPOSE --> PG
+```
+
+### Mapa de pastas
+
+```
+veritas-ai/
+├── AGENTS.md              # Guia para humanos e agentes: stack, privacidade, pipeline, TODOs
+├── README.md              # Este arquivo — visão geral e como rodar
+├── docker-compose.yml     # Postgres local (apenas metadados operacionais)
+├── .env.example           # Variáveis de ambiente (copiar para .env)
+│
+├── docs/                  # Contratos e hipóteses documentadas
+│   ├── SCHEMA_EXTRACAO.md # JSON-alvo da extração (cartão de ponto, holerite)
+│   └── PJE_CALC_LAYOUT.md # Layout provisório da planilha Excel (não é o oficial)
+│
+├── backend/               # API e processamento (Python + FastAPI)
+│   ├── main.py            # Entrada da aplicação FastAPI
+│   ├── api/               # Rotas HTTP (jobs, health)
+│   ├── services/          # Orquestração: sessão, upload, descarte do PDF
+│   ├── pipeline/          # Estágios do processamento
+│   │   ├── extractor.py   # Camadas 1–2: leitura local e heurísticas (stub)
+│   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração (stub)
+│   │   ├── validator.py   # Validação do JSON contra regras de negócio
+│   │   └── excel_builder.py # Geração do .xlsx (openpyxl)
+│   ├── schemas/           # Contratos Pydantic (API + extração)
+│   ├── models/            # Entidades SQLAlchemy (só metadados, sem conteúdo processual)
+│   ├── repositories/      # Acesso ao PostgreSQL
+│   ├── core/              # Config, database async, logging
+│   ├── alembic/           # Migrations do banco
+│   └── tests/             # Testes do pipeline e da API
+│
+└── frontend/              # Interface web (React + Vite + TypeScript)
+    ├── src/
+    │   ├── App.tsx        # Fluxo das 4 etapas (upload → download)
+    │   ├── components/    # Telas e componentes de UI (shadcn/ui)
+    │   └── lib/           # Cliente da API e tipos TypeScript
+    ├── public/            # Assets estáticos (favicon)
+    └── vite.config.ts     # Dev server e proxy para a API
+```
+
+| Pasta | Responsabilidade |
+|---|---|
+| `docs/` | Contratos de dados e layout da planilha — fonte de verdade para JSON e Excel |
+| `backend/api/` | Endpoints REST: upload, status, preview, download, descarte |
+| `backend/services/` | Regras de sessão stateless, tempfile do PDF, coordenação do pipeline |
+| `backend/pipeline/` | Transformação do PDF em JSON validado e depois em Excel |
+| `backend/schemas/` | Modelos Pydantic compartilhados entre API, pipeline e validação |
+| `backend/models/` + `repositories/` | Persistência **apenas** de metadados (`processing_runs`) |
+| `backend/core/` | Configuração, engine async do Postgres, logger operacional |
+| `backend/alembic/` | Versionamento do schema do banco |
+| `frontend/src/components/` | UI em português: upload, processamento, revisão, download |
+| `frontend/src/lib/` | Chamadas à API e tipos espelhando o backend |
+
+Dados sensíveis do processo **não** passam por `models/`, `repositories/` nem disco após o ciclo da sessão — ficam só em memória até o download.
+
 ## O que o sistema fará
 
 1. Receber upload de processos em PDF (inclusive volumes grandes).
