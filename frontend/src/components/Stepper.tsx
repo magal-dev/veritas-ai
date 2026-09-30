@@ -51,7 +51,7 @@ export function Stepper({ current }: StepperProps) {
                 </span>
                 <span
                   className={cn(
-                    'truncate text-[9px] font-medium uppercase tracking-[0.08em] transition-colors duration-500 sm:text-[11px] sm:tracking-[0.18em]',
+                    'whitespace-nowrap text-[8px] font-medium uppercase tracking-[0.04em] transition-colors duration-500 sm:text-[11px] sm:tracking-[0.18em]',
                     active ? 'text-ink' : 'text-ink-muted max-sm:sr-only',
                   )}
                 >
