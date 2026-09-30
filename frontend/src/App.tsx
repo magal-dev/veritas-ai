@@ -109,33 +109,17 @@ export default function App() {
   return (
     <div className="min-h-svh">
       <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
-        <div aria-hidden className="pointer-events-none absolute inset-3 rounded-main border border-offwhite/20" />
-        <div className="relative mx-auto max-w-5xl px-6 pb-16 pt-8 sm:px-8">
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-6 pb-9 pt-6 sm:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img src="/logo-light.png" alt="" className="h-11 w-11 animate-fade object-contain" />
+              <img src="/logo-light.png" alt="" className="h-9 w-9 animate-fade object-contain" />
               <span className="font-display text-2xl tracking-[0.04em]">Veritas AI</span>
             </div>
-            <Badge className="border-offwhite/30 text-offwhite/80">Fundação 0.1 · sem persistência</Badge>
+            <Badge className="border-offwhite/30 text-offwhite/80">Fundação 0.1</Badge>
           </div>
-
-          <div className="mt-14 grid gap-8 sm:grid-cols-[1fr_auto] sm:items-end">
-            <h1 className="animate-rise font-display text-5xl leading-[0.98] tracking-[-0.02em] sm:text-7xl">
-              Extração inteligente de{' '}
-              <em className="text-offwhite/80">dados processuais</em>
-            </h1>
-            <p className="eyebrow animate-rise whitespace-nowrap text-offwhite/65 [animation-delay:150ms]">
-              Cartão de ponto · Holerite · PJe-Calc
-            </p>
-          </div>
-
-          <div className="mt-8 flex items-center gap-4">
-            <span aria-hidden className="h-px w-16 bg-offwhite/40" />
-            <p className="max-w-xl text-[15px] leading-relaxed text-offwhite/75">
-              Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
-              para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
-            </p>
-          </div>
+          <h1 className="animate-rise font-display text-4xl leading-[1] tracking-[-0.02em] sm:text-5xl">
+            Extração inteligente de <em className="text-offwhite/80">dados processuais</em>
+          </h1>
         </div>
       </header>
 
