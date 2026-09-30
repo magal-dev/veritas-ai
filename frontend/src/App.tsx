@@ -121,7 +121,7 @@ export default function App() {
           aria-hidden
           className="pointer-events-none absolute -right-1/4 -top-1/2 h-[140%] w-3/4 animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(236,231,211,0.10),transparent)]"
         />
-        <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-6 pb-9 pt-6 sm:px-8">
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-8 pt-5 sm:px-8 sm:pb-9 sm:pt-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <img src="/logo-light.png" alt="" className="h-9 w-9 animate-pop object-contain" />
@@ -133,7 +133,7 @@ export default function App() {
               Fundação 0.1
             </Badge>
           </div>
-          <h1 className="font-display text-4xl leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
+          <h1 className="font-display text-[34px] leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
             {TITLE.map((word, index) => (
               <span key={word.text} aria-hidden className="inline-block overflow-hidden pb-1 align-bottom">
                 <span
@@ -149,7 +149,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-12 px-6 py-14 sm:px-8">
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:gap-12 sm:px-8 sm:py-14">
         <Stepper current={step} />
 
         <div key={step} className="animate-rise">
@@ -177,7 +177,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-rule">
-        <div className="mx-auto flex max-w-5xl items-start gap-4 px-6 py-8 sm:px-8">
+        <div className="mx-auto flex max-w-5xl items-start gap-4 px-4 py-6 sm:px-8 sm:py-8">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" strokeWidth={1.5} aria-hidden />
           <p className="max-w-2xl text-[13px] leading-relaxed text-ink-muted">
             <span className="eyebrow mr-2 text-ink">Privacy by Design</span>

@@ -15,13 +15,13 @@ function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 }
 
 function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col gap-2 px-8 pt-8 pb-4', className)} {...props} />
+  return <div className={cn('flex flex-col gap-2 px-5 pt-6 pb-4 sm:px-8 sm:pt-8', className)} {...props} />
 }
 
 function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2
-      className={cn('font-display text-[32px] leading-[1.05] tracking-[-0.01em]', className)}
+      className={cn('font-display text-[26px] sm:text-[32px] leading-[1.05] tracking-[-0.01em]', className)}
       {...props}
     />
   )
@@ -32,11 +32,11 @@ function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphEl
 }
 
 function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('px-8 pt-3 pb-8', className)} {...props} />
+  return <div className={cn('px-5 pt-3 pb-6 sm:px-8 sm:pb-8', className)} {...props} />
 }
 
 function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center px-8 pb-8', className)} {...props} />
+  return <div className={cn('flex items-center px-5 pb-6 sm:px-8 sm:pb-8', className)} {...props} />
 }
 
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
