@@ -19,6 +19,8 @@
   --color-accent: #5f1c1c;
   --color-accent-hover: #4a1414;
   --color-danger: #a63a26;
+  --color-on-accent: #f6f3e7;
+  --color-raised: #ffffff;
 
   --radius-main: 8px;
   --radius-sm: 6px;
@@ -156,6 +158,34 @@
   }
 }
 
+/*
+ * Tema escuro: redefine só os tokens semânticos. O cabeçalho continua burgundy
+ * (offwhite sobre #5f1c1c ≈ 10:1). Contrastes (WCAG AA ≥ 4.5:1 para texto):
+ *   ink #ece7d3 / paper #1a1816 ≈ 14:1 · ink-muted #b5ad9a ≈ 7.9:1
+ *   accent #e0a0a0 / paper ≈ 8.2:1 · on-accent #1b1b1b / accent ≈ 8:1
+ *   danger #f0907c / paper ≈ 7.6:1
+ */
+:root {
+  color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
+  --color-ink: #ece7d3;
+  --color-ink-muted: #b5ad9a;
+  --color-paper: #1a1816;
+  --color-paper-2: #24211e;
+  --color-rule: #3f3a33;
+  --color-accent: #e0a0a0;
+  --color-accent-hover: #ebb9b9;
+  --color-danger: #f0907c;
+  --color-on-accent: #1b1b1b;
+  --color-raised: #2e2a26;
+}
+:root.dark .grain:not(.grain-dark)::after {
+  mix-blend-mode: screen;
+  opacity: 0.08;
+}
+
 html,
 body,
 #root {
@@ -164,6 +194,7 @@ body,
 
 body {
   margin: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);

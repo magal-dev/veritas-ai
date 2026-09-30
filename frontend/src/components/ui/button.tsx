@@ -10,11 +10,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-accent text-paper before:pointer-events-none before:absolute before:inset-y-0 before:-left-1/2 before:w-1/3 before:bg-white/15 before:opacity-0 hover:before:animate-sheen hover:before:opacity-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_16px_-8px_rgba(95,28,28,0.7)] hover:bg-accent-hover hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-8px_rgba(95,28,28,0.8)]',
+          'bg-accent text-on-accent before:pointer-events-none before:absolute before:inset-y-0 before:-left-1/2 before:w-1/3 before:bg-white/15 before:opacity-0 hover:before:animate-sheen hover:before:opacity-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_16px_-8px_rgba(95,28,28,0.7)] hover:bg-accent-hover hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-8px_rgba(95,28,28,0.8)]',
         secondary:
-          'bg-paper-2 text-ink border border-rule hover:border-accent/50 hover:bg-white',
+          'bg-paper-2 text-ink border border-rule hover:border-accent/50 hover:bg-raised',
         ghost: 'text-ink-muted hover:bg-ink/5 hover:text-ink',
-        danger: 'bg-danger text-paper-2 hover:bg-danger/90',
+        danger: 'bg-danger text-on-accent hover:bg-danger/90',
       },
       size: {
         default: 'h-11 px-5',

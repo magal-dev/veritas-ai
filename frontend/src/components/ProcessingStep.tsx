@@ -25,7 +25,7 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[max(160%,40rem)] -translate-x-1/2 -translate-y-1/2"
       >
-        <span className="block h-full w-full animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(95,28,28,0.22),rgba(95,28,28,0.08)_55%,transparent)]" />
+        <span className="block h-full w-full animate-breathe rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-accent)_22%,transparent),color-mix(in_srgb,var(--color-accent)_8%,transparent)_55%,transparent)]" />
       </span>
       <CardHeader className="relative">
         <CardTitle>Processando na sessão</CardTitle>
