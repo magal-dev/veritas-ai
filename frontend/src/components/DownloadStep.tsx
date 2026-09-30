@@ -1,3 +1,5 @@
+import { ShieldCheck } from 'lucide-react'
+
 import { Alert, AlertInfo } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +23,9 @@ export function DownloadStep({
     return (
       <Card>
         <CardHeader>
+          <span className="mb-2 flex h-11 w-11 animate-pop items-center justify-center rounded-full bg-accent text-paper">
+            <ShieldCheck className="h-5 w-5" aria-hidden />
+          </span>
           <CardTitle>Sessão encerrada</CardTitle>
           <CardDescription>
             O JSON extraído foi apagado da memória. O PDF já havia sido removido do

@@ -1,3 +1,4 @@
+import { CountUp } from '@/components/CountUp'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -22,7 +23,7 @@ function EmptyRow({ columns, message }: { columns: number; message: string }) {
 export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProps) {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="animate-rise">
         <CardHeader>
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
@@ -31,22 +32,28 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Páginas no PDF</p>
-            <p className="mt-1 font-display text-2xl">{extraction.pdf_page_count}</p>
+          <div className="rounded-main border border-rule bg-paper/70 p-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Páginas no PDF</p>
+            <p className="mt-1 font-display text-3xl text-accent">
+              <CountUp value={extraction.pdf_page_count} />
+            </p>
           </div>
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Páginas candidatas</p>
-            <p className="mt-1 font-display text-2xl">{extraction.candidate_page_count}</p>
+          <div className="rounded-main border border-rule bg-paper/70 p-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Páginas candidatas</p>
+            <p className="mt-1 font-display text-3xl text-accent">
+              <CountUp value={extraction.candidate_page_count} />
+            </p>
           </div>
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Chamadas Gemini</p>
-            <p className="mt-1 font-display text-2xl">{extraction.gemini_call_count}</p>
+          <div className="rounded-main border border-rule bg-paper/70 p-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Chamadas Gemini</p>
+            <p className="mt-1 font-display text-3xl text-accent">
+              <CountUp value={extraction.gemini_call_count} />
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-rise [animation-delay:120ms]">
         <CardHeader>
           <CardTitle>Cartão de ponto</CardTitle>
           <CardDescription>Horários de entrada, saída e intervalo.</CardDescription>
@@ -90,7 +97,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-rise [animation-delay:240ms]">
         <CardHeader>
           <CardTitle>Holerite / ficha financeira</CardTitle>
           <CardDescription>Verbas e valores extraídos do documento.</CardDescription>

@@ -6,7 +6,7 @@ function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-rule bg-paper-2 text-ink shadow-[0_12px_40px_rgba(19,41,61,0.06)]',
+        'rounded-main border border-rule bg-paper-2 text-ink shadow-card',
         className,
       )}
       {...props}
@@ -19,7 +19,7 @@ function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 }
 
 function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn('font-display text-xl tracking-tight', className)} {...props} />
+  return <h2 className={cn('font-display text-xl font-medium tracking-tight', className)} {...props} />
 }
 
 function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {

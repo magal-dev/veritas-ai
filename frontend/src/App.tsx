@@ -108,26 +108,42 @@ export default function App() {
 
   return (
     <div className="min-h-svh">
-      <header className="border-b border-rule bg-ink text-paper-2">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-paper/70">Veritas AI · PJe-Calc</p>
-            <h1 className="font-display text-2xl sm:text-3xl mt-1">
-              Extração inteligente de dados processuais
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-paper/80 leading-relaxed">
-              Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
-              para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
-            </p>
+      <header className="relative overflow-hidden border-b border-burgundy/60 bg-darkgray text-offwhite">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-2/3 bg-[radial-gradient(600px_220px_at_100%_0%,rgba(95,28,28,0.55),transparent_70%)]"
+        />
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-5 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-5">
+            <img
+              src="/logo.png"
+              alt="Veritas AI"
+              className="h-16 w-16 shrink-0 animate-fade object-contain sm:h-20 sm:w-20"
+            />
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-offwhite/60">
+                Veritas AI · PJe-Calc
+              </p>
+              <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight sm:text-3xl">
+                Extração inteligente de dados processuais
+              </h1>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-offwhite/75">
+                Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
+                para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
+              </p>
+            </div>
           </div>
-          <Badge className="w-fit border-paper/20 bg-ink text-paper">Fundação 0.1 · sem persistência</Badge>
+          <Badge className="w-fit shrink-0 border-offwhite/20 bg-offwhite/5 text-offwhite/80">
+            <span className="h-1.5 w-1.5 rounded-full bg-offwhite/60" aria-hidden />
+            Fundação 0.1 · sem persistência
+          </Badge>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
-        <div className="flex items-start gap-3 rounded-xl border border-accent/20 bg-white px-4 py-3 text-sm text-ink">
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10">
+        <div className="flex animate-fade items-start gap-3 rounded-main border border-rule bg-paper-2/70 px-4 py-3 text-sm text-ink">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden />
-          <p>
+          <p className="leading-relaxed">
             Privacy by Design: não há contas, histórico nem armazenamento de conteúdo
             processual. O PostgreSQL, quando disponível, registra só metadados operacionais
             (duração, status, contagem de páginas).
@@ -136,26 +152,28 @@ export default function App() {
 
         <Stepper current={step} />
 
-        {step === 'upload' && (
-          <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
-        )}
-        {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
-        {step === 'review' && session.extraction && (
-          <ReviewStep
-            extraction={session.extraction}
-            onContinue={() => setStep('download')}
-            onDiscard={() => void handleDiscard()}
-          />
-        )}
-        {step === 'download' && (
-          <DownloadStep
-            busy={busy}
-            discarded={discarded}
-            error={error}
-            onDownload={() => void handleDownload()}
-            onRestart={reset}
-          />
-        )}
+        <div key={step} className="animate-rise">
+          {step === 'upload' && (
+            <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
+          )}
+          {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
+          {step === 'review' && session.extraction && (
+            <ReviewStep
+              extraction={session.extraction}
+              onContinue={() => setStep('download')}
+              onDiscard={() => void handleDiscard()}
+            />
+          )}
+          {step === 'download' && (
+            <DownloadStep
+              busy={busy}
+              discarded={discarded}
+              error={error}
+              onDownload={() => void handleDownload()}
+              onRestart={reset}
+            />
+          )}
+        </div>
       </main>
     </div>
   )

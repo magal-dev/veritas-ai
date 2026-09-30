@@ -1,5 +1,7 @@
-import { FileUp } from 'lucide-react'
+import { FileText, FileUp } from 'lucide-react'
 import { useId, useState } from 'react'
+
+import { cn } from '@/lib/utils'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,6 +18,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
   const inputId = useId()
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   function validate(next: File | null) {
     setLocalError(null)
@@ -50,15 +53,30 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
       <CardContent className="space-y-4">
         <label
           htmlFor={inputId}
-          className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border border-dashed border-rule bg-paper px-4 py-10 text-center hover:border-accent/50"
-          onDragOver={(event) => event.preventDefault()}
+          className={cn(
+            'group flex cursor-pointer flex-col items-center gap-3 rounded-main border border-dashed bg-paper/60 px-4 py-12 text-center transition-all duration-300 hover:border-accent/60 hover:bg-paper',
+            dragging ? 'scale-[1.01] border-accent bg-accent/6' : 'border-rule',
+            file && 'border-solid border-accent/40 bg-paper',
+          )}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
           onDrop={(event) => {
             event.preventDefault()
+            setDragging(false)
             validate(event.dataTransfer.files[0] ?? null)
           }}
         >
-          <FileUp className="h-8 w-8 text-accent" aria-hidden />
-          <span className="text-sm text-ink">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/8 text-accent transition-transform duration-300 group-hover:-translate-y-0.5">
+            {file ? (
+              <FileText key="file" className="h-6 w-6 animate-pop" aria-hidden />
+            ) : (
+              <FileUp className="h-6 w-6" aria-hidden />
+            )}
+          </span>
+          <span className="text-sm font-medium text-ink">
             {file ? file.name : 'Clique para escolher o PDF ou solte o arquivo aqui'}
           </span>
           <span className="text-xs text-ink-muted">
