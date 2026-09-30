@@ -20,30 +20,32 @@ function useElapsed() {
 export function ProcessingStep({ fileName }: ProcessingStepProps) {
   const elapsed = useElapsed()
   return (
-    <Card>
-      <CardHeader>
+    <Card className="relative overflow-hidden">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[max(160%,40rem)] -translate-x-1/2 -translate-y-1/2"
+      >
+        <span className="block h-full w-full animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(95,28,28,0.22),rgba(95,28,28,0.08)_55%,transparent)]" />
+      </span>
+      <CardHeader className="relative">
         <CardTitle>Processando na sessão</CardTitle>
         <CardDescription>
           O PDF não permanece no servidor. Nesta fundação, o pipeline só conta páginas
           e devolve um JSON vazio — as camadas de triagem e o Gemini entram depois.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col items-center gap-5 py-8" role="status" aria-live="polite">
+      <CardContent className="relative flex flex-col items-center gap-5 py-8" role="status" aria-live="polite">
         <span className="relative flex h-24 w-24 items-center justify-center">
-          <svg className="absolute inset-0 h-full w-full animate-[spin_9s_linear_infinite]" viewBox="0 0 100 100" aria-hidden>
-            <circle cx="50" cy="50" r="48" fill="none" stroke="var(--color-rule)" strokeWidth="0.75" />
-            <circle cx="50" cy="50" r="48" fill="none" stroke="var(--color-burgundy)" strokeWidth="1.25" strokeDasharray="30 272" strokeLinecap="round" />
-          </svg>
-          <img src="/logo.png" alt="" className="h-14 w-14 animate-seal rounded-full object-contain" />
+          <img src="/logo.png" alt="" className="h-14 w-14 animate-breathe-logo rounded-full object-contain" />
         </span>
-        <p className="text-center text-sm text-ink-muted">
+        <p className="relative text-center text-sm text-ink-muted">
           <span className="eyebrow mr-2">Lendo</span>
           <span className="font-display text-xl text-ink">{fileName}</span>
         </p>
-        <div className="h-px w-full max-w-xs overflow-hidden bg-rule">
+        <div className="relative h-px w-full max-w-xs overflow-hidden bg-rule">
           <div className="h-full w-1/2 animate-indeterminate bg-accent" />
         </div>
-        <p className="eyebrow tabular-nums text-ink-muted">Tempo de sessão · {elapsed}</p>
+        <p className="relative eyebrow tabular-nums text-ink-muted">Tempo de sessão · {elapsed}</p>
       </CardContent>
     </Card>
   )

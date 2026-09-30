@@ -54,7 +54,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
         <label
           htmlFor={inputId}
           className={cn(
-            'group relative flex cursor-pointer flex-col items-center gap-3 rounded-main bg-paper/50 px-4 py-14 text-center transition-all duration-300 hover:bg-paper',
+            'group relative flex cursor-pointer flex-col items-center gap-3 rounded-main bg-paper/50 px-4 py-10 text-center sm:py-14 transition-all duration-300 hover:bg-paper',
             dragging && 'bg-accent/6',
           )}
           onDragOver={(event) => {
@@ -86,7 +86,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
               <FileUp className="h-7 w-7" strokeWidth={1.25} aria-hidden />
             )}
           </span>
-          <span className="font-display text-2xl leading-tight">
+          <span className="max-w-full break-words font-display text-xl leading-tight sm:text-2xl">
             {file ? file.name : 'Escolha o PDF ou solte o arquivo aqui'}
           </span>
           <span className="eyebrow text-ink-muted">
@@ -112,7 +112,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
           <Button
             type="button"
             size="lg"
-            className="group/btn"
+            className="group/btn w-full sm:w-auto"
             disabled={!file || busy}
             onClick={() => file && onSubmit(file)}
           >

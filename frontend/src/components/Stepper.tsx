@@ -22,7 +22,7 @@ export function Stepper({ current }: StepperProps) {
 
   return (
     <nav aria-label="Etapas do fluxo">
-      <ol className="grid grid-cols-4 gap-x-4">
+      <ol className="grid grid-cols-4 gap-x-2 sm:gap-x-4">
         {STEPS.map((step, index) => {
           const done = index < currentIndex
           const active = index === currentIndex
@@ -40,10 +40,10 @@ export function Stepper({ current }: StepperProps) {
                   )}
                 />
               </span>
-              <span className="flex items-baseline gap-2">
+              <span className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-2">
                 <span
                   className={cn(
-                    'font-display text-2xl italic leading-none transition-colors duration-500',
+                    'font-display text-xl italic sm:text-2xl leading-none transition-colors duration-500',
                     done || active ? 'text-accent' : 'text-ink-muted/60',
                   )}
                 >
@@ -51,8 +51,8 @@ export function Stepper({ current }: StepperProps) {
                 </span>
                 <span
                   className={cn(
-                    'text-[11px] font-medium uppercase tracking-[0.18em] transition-colors duration-500',
-                    active ? 'text-ink' : 'text-ink-muted',
+                    'whitespace-nowrap text-[8px] font-medium uppercase tracking-[0.04em] transition-colors duration-500 sm:text-[11px] sm:tracking-[0.18em]',
+                    active ? 'text-ink' : 'text-ink-muted max-sm:sr-only',
                   )}
                 >
                   {step.label}
