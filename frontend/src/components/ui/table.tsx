@@ -11,7 +11,7 @@ function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
 }
 
 function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('bg-ink text-paper', className)} {...props} />
+  return <thead className={cn('bg-accent text-paper', className)} {...props} />
 }
 
 function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -25,7 +25,7 @@ function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) 
 function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn('px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.12em]', className)}
+      className={cn('px-3 py-2.5 text-left text-[10.5px] font-medium uppercase tracking-[0.18em]', className)}
       {...props}
     />
   )

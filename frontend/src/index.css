@@ -26,10 +26,10 @@
   --radius-lg: 8px;
   --radius-xl: 8px;
 
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
 
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 14px 36px -18px rgba(27, 27, 27, 0.28);
+  --shadow-card: 0 0 0 4px var(--color-paper), 0 0 0 5px var(--color-rule), 0 30px 50px -30px rgba(27, 27, 27, 0.35);
 
   --animate-rise: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-fade: fade 0.4s ease-out both;
@@ -95,12 +95,39 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.55), transparent 70%),
-    var(--color-paper);
+  background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1, "kern" 1;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Textura de papel: ruído fino e estático sobre qualquer superfície */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.2  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.grain-dark::after {
+  mix-blend-mode: screen;
+  opacity: 0.12;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
 }
 
 ::selection {

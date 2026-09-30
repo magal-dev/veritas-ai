@@ -23,7 +23,7 @@ function AlertInfo({ className, children, ...props }: HTMLAttributes<HTMLDivElem
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-main border border-accent/20 bg-accent/6 px-4 py-3 text-sm leading-relaxed text-ink',
+        'flex items-start gap-3 rounded-main border border-accent/25 bg-accent/5 px-4 py-3 text-sm leading-relaxed text-ink',
         className,
       )}
       {...props}

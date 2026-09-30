@@ -108,48 +108,38 @@ export default function App() {
 
   return (
     <div className="min-h-svh">
-      <header className="relative overflow-hidden border-b border-burgundy/60 bg-darkgray text-offwhite">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-2/3 bg-[radial-gradient(600px_220px_at_100%_0%,rgba(95,28,28,0.55),transparent_70%)]"
-        />
-        <div className="relative mx-auto flex max-w-5xl flex-col gap-5 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-5">
-            <img
-              src="/logo.png"
-              alt="Veritas AI"
-              className="h-16 w-16 shrink-0 animate-fade object-contain sm:h-20 sm:w-20"
-            />
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.28em] text-offwhite/60">
-                Veritas AI · PJe-Calc
-              </p>
-              <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight sm:text-3xl">
-                Extração inteligente de dados processuais
-              </h1>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-offwhite/75">
-                Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
-                para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
-              </p>
+      <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
+        <div aria-hidden className="pointer-events-none absolute inset-3 rounded-main border border-offwhite/20" />
+        <div className="relative mx-auto max-w-5xl px-6 pb-16 pt-8 sm:px-8">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <img src="/logo-light.png" alt="" className="h-11 w-11 animate-fade object-contain" />
+              <span className="font-display text-2xl tracking-[0.04em]">Veritas AI</span>
             </div>
+            <Badge className="border-offwhite/30 text-offwhite/80">Fundação 0.1 · sem persistência</Badge>
           </div>
-          <Badge className="w-fit shrink-0 border-offwhite/20 bg-offwhite/5 text-offwhite/80">
-            <span className="h-1.5 w-1.5 rounded-full bg-offwhite/60" aria-hidden />
-            Fundação 0.1 · sem persistência
-          </Badge>
+
+          <div className="mt-14 grid gap-8 sm:grid-cols-[1fr_auto] sm:items-end">
+            <h1 className="animate-rise font-display text-5xl leading-[0.98] tracking-[-0.02em] sm:text-7xl">
+              Extração inteligente de{' '}
+              <em className="text-offwhite/80">dados processuais</em>
+            </h1>
+            <p className="eyebrow animate-rise whitespace-nowrap text-offwhite/65 [animation-delay:150ms]">
+              Cartão de ponto · Holerite · PJe-Calc
+            </p>
+          </div>
+
+          <div className="mt-8 flex items-center gap-4">
+            <span aria-hidden className="h-px w-16 bg-offwhite/40" />
+            <p className="max-w-xl text-[15px] leading-relaxed text-offwhite/75">
+              Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
+              para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
+            </p>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10">
-        <div className="flex animate-fade items-start gap-3 rounded-main border border-rule bg-paper-2/70 px-4 py-3 text-sm text-ink">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden />
-          <p className="leading-relaxed">
-            Privacy by Design: não há contas, histórico nem armazenamento de conteúdo
-            processual. O PostgreSQL, quando disponível, registra só metadados operacionais
-            (duração, status, contagem de páginas).
-          </p>
-        </div>
-
+      <main className="mx-auto flex max-w-5xl flex-col gap-12 px-6 py-14 sm:px-8">
         <Stepper current={step} />
 
         <div key={step} className="animate-rise">
@@ -175,6 +165,18 @@ export default function App() {
           )}
         </div>
       </main>
+
+      <footer className="border-t border-rule">
+        <div className="mx-auto flex max-w-5xl items-start gap-4 px-6 py-8 sm:px-8">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" strokeWidth={1.5} aria-hidden />
+          <p className="max-w-2xl text-[13px] leading-relaxed text-ink-muted">
+            <span className="eyebrow mr-2 text-ink">Privacy by Design</span>
+            Não há contas, histórico nem armazenamento de conteúdo processual. O PostgreSQL,
+            quando disponível, registra só metadados operacionais (duração, status, contagem
+            de páginas).
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }

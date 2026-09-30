@@ -1,4 +1,4 @@
-import { FileText, FileUp } from 'lucide-react'
+import { ArrowRight, FileText, FileUp } from 'lucide-react'
 import { useId, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -54,9 +54,8 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
         <label
           htmlFor={inputId}
           className={cn(
-            'group flex cursor-pointer flex-col items-center gap-3 rounded-main border border-dashed bg-paper/60 px-4 py-12 text-center transition-all duration-300 hover:border-accent/60 hover:bg-paper',
-            dragging ? 'scale-[1.01] border-accent bg-accent/6' : 'border-rule',
-            file && 'border-solid border-accent/40 bg-paper',
+            'group relative flex cursor-pointer flex-col items-center gap-3 rounded-main bg-paper/50 px-4 py-14 text-center transition-all duration-300 hover:bg-paper',
+            dragging && 'bg-accent/6',
           )}
           onDragOver={(event) => {
             event.preventDefault()
@@ -69,17 +68,28 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
             validate(event.dataTransfer.files[0] ?? null)
           }}
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/8 text-accent transition-transform duration-300 group-hover:-translate-y-0.5">
+          {['left-0 top-0 border-l border-t', 'right-0 top-0 border-r border-t', 'bottom-0 left-0 border-b border-l', 'bottom-0 right-0 border-b border-r'].map((pos) => (
+            <span
+              key={pos}
+              aria-hidden
+              className={cn(
+                'absolute h-5 w-5 border-ink/60 transition-all duration-300 group-hover:h-7 group-hover:w-7 group-hover:border-accent',
+                dragging && 'h-7 w-7 border-accent',
+                pos,
+              )}
+            />
+          ))}
+          <span className="text-accent transition-transform duration-300 group-hover:-translate-y-0.5">
             {file ? (
-              <FileText key="file" className="h-6 w-6 animate-pop" aria-hidden />
+              <FileText key="file" className="h-7 w-7 animate-pop" strokeWidth={1.25} aria-hidden />
             ) : (
-              <FileUp className="h-6 w-6" aria-hidden />
+              <FileUp className="h-7 w-7" strokeWidth={1.25} aria-hidden />
             )}
           </span>
-          <span className="text-sm font-medium text-ink">
-            {file ? file.name : 'Clique para escolher o PDF ou solte o arquivo aqui'}
+          <span className="font-display text-2xl leading-tight">
+            {file ? file.name : 'Escolha o PDF ou solte o arquivo aqui'}
           </span>
-          <span className="text-xs text-ink-muted">
+          <span className="eyebrow text-ink-muted">
             PDF nativo ou digitalizado · até {MAX_UPLOAD_MB} MB
           </span>
           <input
@@ -95,17 +105,19 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
         {(localError || error) && <Alert>{localError || error}</Alert>}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-ink-muted max-w-md">
+          <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
             A extração com Gemini ainda não está ligada. Você vai percorrer o fluxo
             completo e baixar a planilha no layout provisório, sem linhas de dados.
           </p>
           <Button
             type="button"
             size="lg"
+            className="group/btn"
             disabled={!file || busy}
             onClick={() => file && onSubmit(file)}
           >
             {busy ? 'Enviando…' : 'Processar na sessão'}
+            <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" aria-hidden />
           </Button>
         </div>
       </CardContent>

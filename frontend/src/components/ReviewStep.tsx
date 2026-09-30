@@ -13,7 +13,7 @@ type ReviewStepProps = {
 function EmptyRow({ columns, message }: { columns: number; message: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={columns} className="py-8 text-center text-ink-muted">
+      <TableCell colSpan={columns} className="py-10 text-center font-display text-lg italic text-ink-muted">
         {message}
       </TableCell>
     </TableRow>
@@ -31,22 +31,22 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
             vazia de propósito: ainda não há classificação de cartão de ponto nem holerite.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="rounded-main border border-rule bg-paper/70 p-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Páginas no PDF</p>
-            <p className="mt-1 font-display text-3xl text-accent">
+        <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
+          <div className="border-t border-ink/70 pt-3">
+            <p className="eyebrow text-ink-muted">Páginas no PDF</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.pdf_page_count} />
             </p>
           </div>
-          <div className="rounded-main border border-rule bg-paper/70 p-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Páginas candidatas</p>
-            <p className="mt-1 font-display text-3xl text-accent">
+          <div className="border-t border-ink/70 pt-3">
+            <p className="eyebrow text-ink-muted">Páginas candidatas</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.candidate_page_count} />
             </p>
           </div>
-          <div className="rounded-main border border-rule bg-paper/70 p-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Chamadas Gemini</p>
-            <p className="mt-1 font-display text-3xl text-accent">
+          <div className="border-t border-ink/70 pt-3">
+            <p className="eyebrow text-ink-muted">Chamadas Gemini</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.gemini_call_count} />
             </p>
           </div>

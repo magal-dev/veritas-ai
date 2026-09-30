@@ -23,9 +23,7 @@ export function DownloadStep({
     return (
       <Card>
         <CardHeader>
-          <span className="mb-2 flex h-11 w-11 animate-pop items-center justify-center rounded-full bg-accent text-paper">
-            <ShieldCheck className="h-5 w-5" aria-hidden />
-          </span>
+          <ShieldCheck className="mb-1 h-7 w-7 animate-pop text-accent" strokeWidth={1.25} aria-hidden />
           <CardTitle>Sessão encerrada</CardTitle>
           <CardDescription>
             O JSON extraído foi apagado da memória. O PDF já havia sido removido do
