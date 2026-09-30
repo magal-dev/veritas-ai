@@ -11,7 +11,7 @@ function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
 }
 
 function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('bg-accent text-paper', className)} {...props} />
+  return <thead className={cn('bg-accent text-on-accent', className)} {...props} />
 }
 
 function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {

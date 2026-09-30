@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import { DownloadStep } from '@/components/DownloadStep'
 import { ProcessingStep } from '@/components/ProcessingStep'
 import { ReviewStep } from '@/components/ReviewStep'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
 import { Badge } from '@/components/ui/badge'
@@ -129,9 +130,12 @@ export default function App() {
                 Veritas AI
               </span>
             </div>
-            <Badge className="animate-fade border-offwhite/30 text-offwhite/80 [animation-delay:400ms]">
-              Fundação 0.1
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge className="animate-fade border-offwhite/30 text-offwhite/80 [animation-delay:400ms]">
+                Fundação 0.1
+              </Badge>
+              <ThemeToggle />
+            </div>
           </div>
           <h1 className="font-display text-[34px] leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
             {TITLE.map((word, index) => (

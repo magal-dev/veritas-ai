@@ -44,7 +44,7 @@ export function Stepper({ current }: StepperProps) {
                 <span
                   className={cn(
                     'font-display text-xl italic sm:text-2xl leading-none transition-colors duration-500',
-                    done || active ? 'text-accent' : 'text-ink-muted/60',
+                    done || active ? 'text-accent' : 'text-ink-muted',
                   )}
                 >
                   {done ? <Check key="done" className="inline h-4 w-4 animate-pop" aria-hidden /> : step.numeral}
