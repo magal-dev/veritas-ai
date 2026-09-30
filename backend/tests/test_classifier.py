@@ -54,13 +54,13 @@ def test_stub_marks_candidates_as_unclassified(tmp_path: Path):
     assert outcome.unclassified_candidate_pages == [1, 2]
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
-def test_gemini_extracts_time_card(mock_model_cls: MagicMock, tmp_path: Path):
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_extracts_time_card(mock_client_cls: MagicMock, tmp_path: Path):
     pdf_path = tmp_path / "ponto.pdf"
     pdf_path.write_bytes(_pdf_bytes("cartao de ponto entrada saida"))
 
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = _mock_response(
+    mock_models = MagicMock()
+    mock_models.generate_content.return_value = _mock_response(
         {
             "document_type": "CARTAO_PONTO",
             "confidence": 0.9,
@@ -81,7 +81,7 @@ def test_gemini_extracts_time_card(mock_model_cls: MagicMock, tmp_path: Path):
             "conflicts": [],
         }
     )
-    mock_model_cls.return_value = mock_model
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(pdf_page_count=1, candidate_pages=[1])
@@ -94,16 +94,16 @@ def test_gemini_extracts_time_card(mock_model_cls: MagicMock, tmp_path: Path):
     assert len(outcome.time_cards) == 1
     assert outcome.time_cards[0].date == "2024-03-01"
     assert outcome.payslips == []
-    mock_model.generate_content.assert_called_once()
+    mock_models.generate_content.assert_called_once()
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
-def test_gemini_irrelevante_produces_no_rows(mock_model_cls: MagicMock, tmp_path: Path):
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_irrelevante_produces_no_rows(mock_client_cls: MagicMock, tmp_path: Path):
     pdf_path = tmp_path / "irrelevant.pdf"
     pdf_path.write_bytes(_pdf_bytes("peticao inicial"))
 
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = _mock_response(
+    mock_models = MagicMock()
+    mock_models.generate_content.return_value = _mock_response(
         {
             "document_type": "IRRELEVANTE",
             "confidence": 0.95,
@@ -114,7 +114,7 @@ def test_gemini_irrelevante_produces_no_rows(mock_model_cls: MagicMock, tmp_path
             "conflicts": [],
         }
     )
-    mock_model_cls.return_value = mock_model
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(pdf_page_count=1, candidate_pages=[1])
@@ -126,14 +126,14 @@ def test_gemini_irrelevante_produces_no_rows(mock_model_cls: MagicMock, tmp_path
     assert outcome.payslips == []
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
-def test_gemini_raises_when_all_pages_fail(mock_model_cls: MagicMock, tmp_path: Path):
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_raises_when_all_pages_fail(mock_client_cls: MagicMock, tmp_path: Path):
     pdf_path = tmp_path / "fail.pdf"
     pdf_path.write_bytes(_pdf_bytes())
 
-    mock_model = MagicMock()
-    mock_model.generate_content.side_effect = RuntimeError("api down")
-    mock_model_cls.return_value = mock_model
+    mock_models = MagicMock()
+    mock_models.generate_content.side_effect = RuntimeError("api down")
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(pdf_page_count=1, candidate_pages=[1])
@@ -142,8 +142,8 @@ def test_gemini_raises_when_all_pages_fail(mock_model_cls: MagicMock, tmp_path: 
         classifier.classify(pdf_path, signals)
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
-def test_gemini_only_processes_candidate_pages(mock_model_cls: MagicMock, tmp_path: Path):
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_only_processes_candidate_pages(mock_client_cls: MagicMock, tmp_path: Path):
     document = fitz.open()
     for index in range(1, 4):
         page = document.new_page()
@@ -152,8 +152,8 @@ def test_gemini_only_processes_candidate_pages(mock_model_cls: MagicMock, tmp_pa
     pdf_path.write_bytes(document.tobytes())
     document.close()
 
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = _mock_response(
+    mock_models = MagicMock()
+    mock_models.generate_content.return_value = _mock_response(
         {
             "document_type": "HOLERITE",
             "confidence": 0.8,
@@ -174,7 +174,7 @@ def test_gemini_only_processes_candidate_pages(mock_model_cls: MagicMock, tmp_pa
             "conflicts": [],
         }
     )
-    mock_model_cls.return_value = mock_model
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(pdf_page_count=3, candidate_pages=[2])
@@ -182,7 +182,7 @@ def test_gemini_only_processes_candidate_pages(mock_model_cls: MagicMock, tmp_pa
     outcome = classifier.classify(pdf_path, signals)
 
     assert outcome.gemini_call_count == 1
-    mock_model.generate_content.assert_called_once()
+    mock_models.generate_content.assert_called_once()
 
 
 def _multi_page_pdf(tmp_path: Path, pages: int) -> Path:
@@ -203,22 +203,22 @@ def _page_from_prompt(contents: list) -> int:
     return int(prompt[start:].split(" ")[0])
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
+@patch("pipeline.classifier.genai.Client")
 def test_gemini_processes_candidates_and_keeps_candidate_order(
-    mock_model_cls: MagicMock, tmp_path: Path
+    mock_client_cls: MagicMock, tmp_path: Path
 ):
     pdf_path = _multi_page_pdf(tmp_path, 3)
 
-    def respond(contents, **kwargs):
+    def respond(*, contents, **kwargs):
         page_number = _page_from_prompt(contents)
         document_type = "HOLERITE" if page_number != 1 else "IRRELEVANTE"
         return _mock_response(
             {"document_type": document_type, "confidence": page_number / 10}
         )
 
-    mock_model = MagicMock()
-    mock_model.generate_content.side_effect = respond
-    mock_model_cls.return_value = mock_model
+    mock_models = MagicMock()
+    mock_models.generate_content.side_effect = respond
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(pdf_page_count=3, candidate_pages=[3, 1, 2])
@@ -228,25 +228,27 @@ def test_gemini_processes_candidates_and_keeps_candidate_order(
     assert outcome.gemini_call_count == 3
     assert [item.page_number for item in outcome.classifications] == [3, 1, 2]
     assert outcome.classifications[1].document_type.value == "IRRELEVANTE"
-    assert mock_model.generate_content.call_count == 3
-    for call in mock_model.generate_content.call_args_list:
-        assert "timeout" in call.kwargs["request_options"]
+    assert mock_models.generate_content.call_count == 3
+    http_options = mock_client_cls.call_args.kwargs["http_options"]
+    assert http_options.timeout == 90_000
+    for call in mock_models.generate_content.call_args_list:
+        assert call.kwargs["config"].response_mime_type == "application/json"
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
+@patch("pipeline.classifier.genai.Client")
 def test_gemini_partial_failure_marks_page_unclassified(
-    mock_model_cls: MagicMock, tmp_path: Path
+    mock_client_cls: MagicMock, tmp_path: Path
 ):
     pdf_path = _multi_page_pdf(tmp_path, 3)
 
-    def respond(contents, **kwargs):
+    def respond(*, contents, **kwargs):
         if _page_from_prompt(contents) == 2:
             raise RuntimeError("timeout")
         return _mock_response({"document_type": "IRRELEVANTE", "confidence": 0.9})
 
-    mock_model = MagicMock()
-    mock_model.generate_content.side_effect = respond
-    mock_model_cls.return_value = mock_model
+    mock_models = MagicMock()
+    mock_models.generate_content.side_effect = respond
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     signals = ExtractionSignals(
@@ -260,20 +262,20 @@ def test_gemini_partial_failure_marks_page_unclassified(
     assert outcome.unclassified_candidate_pages == [2]
 
 
-@patch("pipeline.classifier.genai.GenerativeModel")
-def test_gemini_receives_grayscale_jpeg(mock_model_cls: MagicMock, tmp_path: Path):
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_receives_grayscale_jpeg(mock_client_cls: MagicMock, tmp_path: Path):
     pdf_path = tmp_path / "imagem.pdf"
     pdf_path.write_bytes(_pdf_bytes())
 
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = _mock_response(
+    mock_models = MagicMock()
+    mock_models.generate_content.return_value = _mock_response(
         {"document_type": "IRRELEVANTE", "confidence": 0.9}
     )
-    mock_model_cls.return_value = mock_model
+    mock_client_cls.return_value.models = mock_models
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-1.5-flash")
     classifier.classify(pdf_path, ExtractionSignals(pdf_page_count=1, candidate_pages=[1]))
 
-    image_part = mock_model.generate_content.call_args.args[0][1]
-    assert image_part["mime_type"] == "image/jpeg"
-    assert image_part["data"][:2] == b"\xff\xd8"
+    image_part = mock_models.generate_content.call_args.kwargs["contents"][1]
+    assert image_part.inline_data.mime_type == "image/jpeg"
+    assert image_part.inline_data.data[:2] == b"\xff\xd8"

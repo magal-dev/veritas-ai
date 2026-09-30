@@ -50,7 +50,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 |---|---|
 | Frontend | React (Vite + TypeScript) |
 | Backend | Python, FastAPI, Uvicorn |
-| IA / LLM | Google Gemini API (`gemini-3.6-flash`, configurável via `GEMINI_MODEL`) via `google-generativeai` |
+| IA / LLM | Google Gemini API (`gemini-3.6-flash`, configurável via `GEMINI_MODEL`) via `google-genai` (SDK oficial; `google-generativeai` foi descontinuado) |
 | PDF | PyMuPDF (`fitz`) + pdfplumber |
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |

@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import fitz
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from core.logging import logger
 from pipeline.extractor import ExtractionSignals
@@ -121,13 +122,16 @@ class GeminiDocumentClassifier(DocumentClassifier):
     """Classifica e extrai dados das páginas candidatas via Gemini (modelo em GEMINI_MODEL)."""
 
     def __init__(self, api_key: str, model_name: str) -> None:
-        genai.configure(api_key=api_key)
-        self._model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.1,
-            },
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_SECONDS * 1000),
+        )
+        self._model_name = model_name
+        self._config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.1,
+            # Sem tools: desliga o function calling automático (evita overhead e warning).
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
 
     def classify(self, pdf_path: Path, signals: ExtractionSignals) -> ClassificationOutcome:
@@ -192,15 +196,16 @@ class GeminiDocumentClassifier(DocumentClassifier):
         )
         return outcome
 
-    def _call_model(self, image_part: dict[str, Any], page_number: int) -> dict[str, Any]:
+    def _call_model(self, image_part: types.Part, page_number: int) -> dict[str, Any]:
         prompt = (
             f"{GEMINI_PROMPT}\n\n"
             f"Número da página no PDF: {page_number}. "
             f"Use source_page={page_number} em todos os registros desta página."
         )
-        response = self._model.generate_content(
-            [prompt, image_part],
-            request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
+        response = self._client.models.generate_content(
+            model=self._model_name,
+            contents=[prompt, image_part],
+            config=self._config,
         )
         payload = _parse_response_text(response.text)
         return _payload_to_outcome(payload, page_number)
@@ -212,11 +217,14 @@ def build_classifier(api_key: str, model_name: str) -> DocumentClassifier:
     return StubDocumentClassifier()
 
 
-def _render_page(document: fitz.Document, page_number: int) -> dict[str, Any]:
+def _render_page(document: fitz.Document, page_number: int) -> types.Part:
     """Escala de cinza + JPEG: payload bem menor que PNG colorido, mesma legibilidade."""
     page = document[page_number - 1]
     pixmap = page.get_pixmap(dpi=RENDER_DPI, colorspace=fitz.csGRAY)
-    return {"mime_type": "image/jpeg", "data": pixmap.tobytes("jpeg", jpg_quality=JPEG_QUALITY)}
+    return types.Part.from_bytes(
+        data=pixmap.tobytes("jpeg", jpg_quality=JPEG_QUALITY),
+        mime_type="image/jpeg",
+    )
 
 
 def _parse_response_text(text: str | None) -> dict[str, Any]:

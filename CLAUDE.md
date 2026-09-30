@@ -70,7 +70,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 ## Testes
 
-- Nunca chame o Gemini real em testes. Use `StubDocumentClassifier` ou faça patch de `pipeline.classifier.genai.GenerativeModel` (padrão em `tests/test_classifier.py`).
+- Nunca chame o Gemini real em testes. Use `StubDocumentClassifier` ou faça patch de `pipeline.classifier.genai.Client` (o mock responde em `.return_value.models.generate_content`) (padrão em `tests/test_classifier.py`).
 - Gere PDFs de teste em memória com `fitz` (PyMuPDF) dentro do `tmp_path`. Não commite PDFs com dados reais.
 - `asyncio_mode = "auto"`: testes `async def` não precisam de decorator.
 - A API deve funcionar sem Postgres; os testes não podem depender de banco.
