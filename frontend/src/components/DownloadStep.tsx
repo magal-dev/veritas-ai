@@ -21,6 +21,10 @@ export function DownloadStep({
     return (
       <Card>
         <CardHeader>
+          <svg className="mb-1 h-12 w-12 text-accent" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="24" cy="24" r="22" pathLength={1} strokeDasharray={1} className="animate-stroke" />
+            <path d="M15 25l6 6 12-13" pathLength={1} strokeDasharray={1} className="animate-stroke [animation-delay:0.7s]" />
+          </svg>
           <CardTitle>Sessão encerrada</CardTitle>
           <CardDescription>
             O JSON extraído foi apagado da memória. O PDF já havia sido removido do

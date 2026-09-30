@@ -1,3 +1,4 @@
+import { CountUp } from '@/components/CountUp'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -12,7 +13,7 @@ type ReviewStepProps = {
 function EmptyRow({ columns, message }: { columns: number; message: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={columns} className="py-8 text-center text-ink-muted">
+      <TableCell colSpan={columns} className="py-10 text-center font-display text-lg italic text-ink-muted">
         {message}
       </TableCell>
     </TableRow>
@@ -22,7 +23,7 @@ function EmptyRow({ columns, message }: { columns: number; message: string }) {
 export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProps) {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="animate-rise">
         <CardHeader>
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
@@ -30,23 +31,29 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
             vazia de propósito: ainda não há classificação de cartão de ponto nem holerite.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Páginas no PDF</p>
-            <p className="mt-1 font-display text-2xl">{extraction.pdf_page_count}</p>
+        <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:150ms]">
+            <p className="eyebrow text-ink-muted">Páginas no PDF</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
+              <CountUp value={extraction.pdf_page_count} />
+            </p>
           </div>
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Páginas candidatas</p>
-            <p className="mt-1 font-display text-2xl">{extraction.candidate_page_count}</p>
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:280ms]">
+            <p className="eyebrow text-ink-muted">Páginas candidatas</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
+              <CountUp value={extraction.candidate_page_count} />
+            </p>
           </div>
-          <div className="rounded-lg border border-rule bg-paper p-3">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Chamadas Gemini</p>
-            <p className="mt-1 font-display text-2xl">{extraction.gemini_call_count}</p>
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:410ms]">
+            <p className="eyebrow text-ink-muted">Chamadas Gemini</p>
+            <p className="mt-1 font-display text-6xl leading-none text-accent">
+              <CountUp value={extraction.gemini_call_count} />
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-rise [animation-delay:120ms]">
         <CardHeader>
           <CardTitle>Cartão de ponto</CardTitle>
           <CardDescription>Horários de entrada, saída e intervalo.</CardDescription>
@@ -70,8 +77,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum cartão de ponto classificado nesta sessão."
                 />
               ) : (
-                extraction.time_cards.map((row) => (
-                  <TableRow key={`${row.date}-${row.source_page}`}>
+                extraction.time_cards.map((row, index) => (
+                  <TableRow
+                    key={`${row.date}-${row.source_page}`}
+                    className="animate-rise"
+                    style={{ animationDelay: `${index * 35}ms` }}
+                  >
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.clock_in ?? '—'}</TableCell>
                     <TableCell>{row.clock_out ?? '—'}</TableCell>
@@ -90,7 +101,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-rise [animation-delay:240ms]">
         <CardHeader>
           <CardTitle>Holerite / ficha financeira</CardTitle>
           <CardDescription>Verbas e valores extraídos do documento.</CardDescription>
@@ -113,8 +124,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum holerite classificado nesta sessão."
                 />
               ) : (
-                extraction.payslips.map((row) => (
-                  <TableRow key={`${row.competence}-${row.item_name}-${row.source_page}`}>
+                extraction.payslips.map((row, index) => (
+                  <TableRow
+                    key={`${row.competence}-${row.item_name}-${row.source_page}`}
+                    className="animate-rise"
+                    style={{ animationDelay: `${index * 35}ms` }}
+                  >
                     <TableCell>{row.competence}</TableCell>
                     <TableCell>{row.item_name}</TableCell>
                     <TableCell>

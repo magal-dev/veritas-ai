@@ -1,15 +1,147 @@
 @import "tailwindcss";
 
+/*
+ * Design system "Veritas AI"
+ * Núcleo: Burgundy #5f1c1c · OffWhite #ece7d3 · DarkGray #1b1b1b · raio 8px.
+ * Os demais valores são derivações desses três (tints, sombras, bordas).
+ */
 @theme {
-  --color-ink: #13293d;
-  --color-ink-muted: #4a6578;
-  --color-paper: #f3eee4;
-  --color-paper-2: #fffdf8;
-  --color-rule: #d9d0c0;
-  --color-accent: #1f6b4a;
-  --color-danger: #9b2c2c;
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --color-burgundy: #5f1c1c;
+  --color-burgundy-deep: #4a1414;
+  --color-offwhite: #ece7d3;
+  --color-darkgray: #1b1b1b;
+
+  --color-ink: #1b1b1b;
+  --color-ink-muted: #5e574d;
+  --color-paper: #ece7d3;
+  --color-paper-2: #f6f3e7;
+  --color-rule: #d3cbb0;
+  --color-accent: #5f1c1c;
+  --color-accent-hover: #4a1414;
+  --color-danger: #a63a26;
+
+  --radius-main: 8px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+
+  --shadow-card: 0 0 0 4px var(--color-paper), 0 0 0 5px var(--color-rule), 0 30px 50px -30px rgba(27, 27, 27, 0.35);
+
+  --animate-rise: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade: fade 0.4s ease-out both;
+  --animate-indeterminate: indeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  --animate-seal: seal 2.4s ease-in-out infinite;
+  --animate-pop: pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-reveal: reveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-draw: draw 1s cubic-bezier(0.65, 0, 0.35, 1) 0.25s both;
+  --animate-float: float 4s ease-in-out infinite;
+  --animate-drift: drift 18s ease-in-out infinite alternate;
+  --animate-sheen: sheen 0.9s ease-out;
+  --animate-stroke: stroke 0.9s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
+  @keyframes reveal {
+    from {
+      transform: translateY(105%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  @keyframes draw {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  @keyframes drift {
+    from {
+      transform: translateX(-12%) scale(1);
+    }
+    to {
+      transform: translateX(12%) scale(1.15);
+    }
+  }
+  @keyframes sheen {
+    from {
+      transform: translateX(0) skewX(-20deg);
+    }
+    to {
+      transform: translateX(520%) skewX(-20deg);
+    }
+  }
+  @keyframes stroke {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%) scaleX(0.4);
+    }
+    50% {
+      transform: translateX(60%) scaleX(0.8);
+    }
+    100% {
+      transform: translateX(260%) scaleX(0.4);
+    }
+  }
+  @keyframes seal {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(95, 28, 28, 0.28);
+    }
+    50% {
+      box-shadow: 0 0 0 14px rgba(95, 28, 28, 0);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 }
 
 html,
@@ -23,8 +155,62 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1, "kern" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Textura de papel: ruído fino e estático sobre qualquer superfície */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.2  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.grain-dark::after {
+  mix-blend-mode: screen;
+  opacity: 0.12;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* Entrada escalonada dos filhos diretos */
+.stagger > * {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.stagger > *:nth-child(4) { animation-delay: 0.24s; }
+.stagger > *:nth-child(5) { animation-delay: 0.32s; }
+
+::selection {
+  background: var(--color-burgundy);
+  color: var(--color-offwhite);
 }
 
 #root {
   width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

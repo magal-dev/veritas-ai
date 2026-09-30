@@ -1,5 +1,7 @@
-import { FileUp } from 'lucide-react'
+import { ArrowRight, FileText, FileUp } from 'lucide-react'
 import { useId, useState } from 'react'
+
+import { cn } from '@/lib/utils'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,6 +18,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
   const inputId = useId()
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   function validate(next: File | null) {
     setLocalError(null)
@@ -40,28 +43,53 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="stagger">
         <CardTitle>Enviar o PDF do processo</CardTitle>
         <CardDescription>
           O arquivo é lido só para contar páginas e em seguida é apagado do servidor.
           Nada do conteúdo processual é gravado em banco.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="stagger space-y-4">
         <label
           htmlFor={inputId}
-          className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border border-dashed border-rule bg-paper px-4 py-10 text-center hover:border-accent/50"
-          onDragOver={(event) => event.preventDefault()}
+          className={cn(
+            'group relative flex cursor-pointer flex-col items-center gap-3 rounded-main bg-paper/50 px-4 py-14 text-center transition-all duration-300 hover:bg-paper',
+            dragging && 'bg-accent/6',
+          )}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
           onDrop={(event) => {
             event.preventDefault()
+            setDragging(false)
             validate(event.dataTransfer.files[0] ?? null)
           }}
         >
-          <FileUp className="h-8 w-8 text-accent" aria-hidden />
-          <span className="text-sm text-ink">
-            {file ? file.name : 'Clique para escolher o PDF ou solte o arquivo aqui'}
+          {['left-0 top-0 border-l border-t', 'right-0 top-0 border-r border-t', 'bottom-0 left-0 border-b border-l', 'bottom-0 right-0 border-b border-r'].map((pos) => (
+            <span
+              key={pos}
+              aria-hidden
+              className={cn(
+                'absolute h-5 w-5 border-ink/60 transition-all duration-300 group-hover:h-7 group-hover:w-7 group-hover:border-accent',
+                dragging && 'h-7 w-7 border-accent',
+                pos,
+              )}
+            />
+          ))}
+          <span className={cn('text-accent', !file && 'animate-float')}>
+            {file ? (
+              <FileText key="file" className="h-7 w-7 animate-pop" strokeWidth={1.25} aria-hidden />
+            ) : (
+              <FileUp className="h-7 w-7" strokeWidth={1.25} aria-hidden />
+            )}
           </span>
-          <span className="text-xs text-ink-muted">
+          <span className="font-display text-2xl leading-tight">
+            {file ? file.name : 'Escolha o PDF ou solte o arquivo aqui'}
+          </span>
+          <span className="eyebrow text-ink-muted">
             PDF nativo ou digitalizado · até {MAX_UPLOAD_MB} MB
           </span>
           <input
@@ -77,17 +105,19 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
         {(localError || error) && <Alert>{localError || error}</Alert>}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-ink-muted max-w-md">
+          <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
             A extração com Gemini ainda não está ligada. Você vai percorrer o fluxo
             completo e baixar a planilha no layout provisório, sem linhas de dados.
           </p>
           <Button
             type="button"
             size="lg"
+            className="group/btn"
             disabled={!file || busy}
             onClick={() => file && onSubmit(file)}
           >
             {busy ? 'Enviando…' : 'Processar na sessão'}
+            <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" aria-hidden />
           </Button>
         </div>
       </CardContent>

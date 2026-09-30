@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils'
 
 function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="relative w-full overflow-x-auto rounded-lg border border-rule">
+    <div className="relative w-full overflow-x-auto rounded-main border border-rule">
       <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   )
 }
 
 function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('bg-ink text-white', className)} {...props} />
+  return <thead className={cn('bg-accent text-paper', className)} {...props} />
 }
 
 function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -19,13 +19,13 @@ function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionEleme
 }
 
 function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn('border-b border-rule last:border-0', className)} {...props} />
+  return <tr className={cn('border-b border-rule transition-colors last:border-0 hover:bg-paper/60', className)} {...props} />
 }
 
 function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn('px-3 py-2 text-left text-xs font-medium tracking-wide', className)}
+      className={cn('px-3 py-2.5 text-left text-[10.5px] font-medium uppercase tracking-[0.18em]', className)}
       {...props}
     />
   )

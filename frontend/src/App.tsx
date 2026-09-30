@@ -22,6 +22,14 @@ const emptySession: SessionState = {
   extraction: null,
 }
 
+const TITLE = [
+  { text: 'Extração' },
+  { text: 'inteligente' },
+  { text: 'de' },
+  { text: 'dados', italic: true },
+  { text: 'processuais', italic: true },
+]
+
 function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     return String((error as ApiError).message)
@@ -108,55 +116,77 @@ export default function App() {
 
   return (
     <div className="min-h-svh">
-      <header className="border-b border-rule bg-ink text-paper-2">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-paper/70">Veritas AI · PJe-Calc</p>
-            <h1 className="font-display text-2xl sm:text-3xl mt-1">
-              Extração inteligente de dados processuais
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-paper/80 leading-relaxed">
-              Cartões de ponto e holerites saem do PDF do processo e entram numa planilha
-              para o PJe-Calc. A sessão é efêmera: upload, revisão, download e descarte.
-            </p>
+      <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-1/4 -top-1/2 h-[140%] w-3/4 animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(236,231,211,0.10),transparent)]"
+        />
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-6 pb-9 pt-6 sm:px-8">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <img src="/logo-light.png" alt="" className="h-9 w-9 animate-pop object-contain" />
+              <span className="font-display text-2xl tracking-[0.04em] animate-fade [animation-delay:200ms]">
+                Veritas AI
+              </span>
+            </div>
+            <Badge className="animate-fade border-offwhite/30 text-offwhite/80 [animation-delay:400ms]">
+              Fundação 0.1
+            </Badge>
           </div>
-          <Badge className="w-fit border-paper/20 bg-ink text-paper">Fundação 0.1 · sem persistência</Badge>
+          <h1 className="font-display text-4xl leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
+            {TITLE.map((word, index) => (
+              <span key={word.text} aria-hidden className="inline-block overflow-hidden pb-1 align-bottom">
+                <span
+                  className={`inline-block animate-reveal ${word.italic ? 'italic text-offwhite/80' : ''}`}
+                  style={{ animationDelay: `${250 + index * 90}ms` }}
+                >
+                  {word.text}
+                  {'\u00A0'}
+                </span>
+              </span>
+            ))}
+          </h1>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
-        <div className="flex items-start gap-3 rounded-xl border border-accent/20 bg-white px-4 py-3 text-sm text-ink">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden />
-          <p>
-            Privacy by Design: não há contas, histórico nem armazenamento de conteúdo
-            processual. O PostgreSQL, quando disponível, registra só metadados operacionais
-            (duração, status, contagem de páginas).
-          </p>
-        </div>
-
+      <main className="mx-auto flex max-w-5xl flex-col gap-12 px-6 py-14 sm:px-8">
         <Stepper current={step} />
 
-        {step === 'upload' && (
-          <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
-        )}
-        {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
-        {step === 'review' && session.extraction && (
-          <ReviewStep
-            extraction={session.extraction}
-            onContinue={() => setStep('download')}
-            onDiscard={() => void handleDiscard()}
-          />
-        )}
-        {step === 'download' && (
-          <DownloadStep
-            busy={busy}
-            discarded={discarded}
-            error={error}
-            onDownload={() => void handleDownload()}
-            onRestart={reset}
-          />
-        )}
+        <div key={step} className="animate-rise">
+          {step === 'upload' && (
+            <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
+          )}
+          {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
+          {step === 'review' && session.extraction && (
+            <ReviewStep
+              extraction={session.extraction}
+              onContinue={() => setStep('download')}
+              onDiscard={() => void handleDiscard()}
+            />
+          )}
+          {step === 'download' && (
+            <DownloadStep
+              busy={busy}
+              discarded={discarded}
+              error={error}
+              onDownload={() => void handleDownload()}
+              onRestart={reset}
+            />
+          )}
+        </div>
       </main>
+
+      <footer className="border-t border-rule">
+        <div className="mx-auto flex max-w-5xl items-start gap-4 px-6 py-8 sm:px-8">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" strokeWidth={1.5} aria-hidden />
+          <p className="max-w-2xl text-[13px] leading-relaxed text-ink-muted">
+            <span className="eyebrow mr-2 text-ink">Privacy by Design</span>
+            Não há contas, histórico nem armazenamento de conteúdo processual. O PostgreSQL,
+            quando disponível, registra só metadados operacionais (duração, status, contagem
+            de páginas).
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }

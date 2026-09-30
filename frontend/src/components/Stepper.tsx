@@ -1,10 +1,12 @@
+import { Check } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 const STEPS = [
-  { id: 'upload', label: 'Upload' },
-  { id: 'processing', label: 'Processamento' },
-  { id: 'review', label: 'Revisão' },
-  { id: 'download', label: 'Download' },
+  { id: 'upload', label: 'Upload', numeral: 'I' },
+  { id: 'processing', label: 'Processamento', numeral: 'II' },
+  { id: 'review', label: 'Revisão', numeral: 'III' },
+  { id: 'download', label: 'Download', numeral: 'IV' },
 ] as const
 
 export type FlowStep = (typeof STEPS)[number]['id']
@@ -19,27 +21,47 @@ export function Stepper({ current }: StepperProps) {
   const currentIndex = ORDER.indexOf(current)
 
   return (
-    <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {STEPS.map((step, index) => {
-        const done = index < currentIndex
-        const active = index === currentIndex
-        return (
-          <li
-            key={step.id}
-            className={cn(
-              'rounded-lg border px-3 py-2 text-sm',
-              active && 'border-accent bg-accent/10 text-ink',
-              done && 'border-accent/40 bg-white text-accent',
-              !active && !done && 'border-rule bg-paper-2 text-ink-muted',
-            )}
-          >
-            <span className="block text-[11px] uppercase tracking-wider opacity-70">
-              Etapa {index + 1}
-            </span>
-            <span className="font-medium">{step.label}</span>
-          </li>
-        )
-      })}
-    </ol>
+    <nav aria-label="Etapas do fluxo">
+      <ol className="grid grid-cols-4 gap-x-4">
+        {STEPS.map((step, index) => {
+          const done = index < currentIndex
+          const active = index === currentIndex
+          return (
+            <li key={step.id} aria-current={active ? 'step' : undefined} className="flex flex-col gap-3">
+              <span className="relative block h-px bg-rule">
+                {(done || active) && (
+                  <span className="absolute inset-0 block origin-left animate-draw bg-accent" />
+                )}
+                <span
+                  className={cn(
+                    'absolute -top-[3px] left-0 block h-[7px] w-[7px] rotate-45 border transition-all duration-500',
+                    done || active ? 'border-accent bg-accent' : 'border-rule bg-paper',
+                    active && 'scale-150',
+                  )}
+                />
+              </span>
+              <span className="flex items-baseline gap-2">
+                <span
+                  className={cn(
+                    'font-display text-2xl italic leading-none transition-colors duration-500',
+                    done || active ? 'text-accent' : 'text-ink-muted/60',
+                  )}
+                >
+                  {done ? <Check key="done" className="inline h-4 w-4 animate-pop" aria-hidden /> : step.numeral}
+                </span>
+                <span
+                  className={cn(
+                    'text-[11px] font-medium uppercase tracking-[0.18em] transition-colors duration-500',
+                    active ? 'text-ink' : 'text-ink-muted',
+                  )}
+                >
+                  {step.label}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
   )
 }
