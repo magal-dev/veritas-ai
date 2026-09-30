@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     job_ttl_seconds: int = 900
     max_upload_mb: int = 80
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     frontend_origin: str = "http://127.0.0.1:4174"
 
 

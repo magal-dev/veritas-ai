@@ -50,7 +50,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 |---|---|
 | Frontend | React (Vite + TypeScript) |
 | Backend | Python, FastAPI, Uvicorn |
-| IA / LLM | Google Gemini API (`gemini-3.6-flash`, configurável via `GEMINI_MODEL`) via `google-genai` (SDK oficial; `google-generativeai` foi descontinuado) |
+| IA / LLM | Google Gemini API (`gemini-3.5-flash-lite`, configurável via `GEMINI_MODEL`) via `google-genai` (SDK oficial; `google-generativeai` foi descontinuado) |
 | PDF | PyMuPDF (`fitz`) + pdfplumber |
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |
@@ -119,7 +119,7 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 
 **Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), vizinhos ±1 com padrão numérico, densidade de texto. A detecção de tabelas do pdfplumber (`extract_tables`, cara) roda só na shortlist (top 10), para confirmar e reordenar.
 
-**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (uma por candidata, timeout de 90 s cada), então a latência é a da chamada mais lenta, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
+**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (uma por candidata, timeout de 90 s e até 3 tentativas em 429/5xx), então a latência é a da chamada mais lenta, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
 
 Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`.
 
@@ -151,7 +151,7 @@ TODO (trabalho futuro):
 
 - [x] Camada 1: PyMuPDF + palavras-chave + padrões tabulares
 - [x] Camada 2: TOC, posição, densidade
-- [x] Camada 3: Gemini (padrão `gemini-3.6-flash`, via `GEMINI_MODEL`) só nas candidatas
+- [x] Camada 3: Gemini (padrão `gemini-3.5-flash-lite`, via `GEMINI_MODEL`) só nas candidatas
 - [ ] Tratamento de PDF nativo vs. escaneado
 - [ ] Revisão humana editável (hoje a tabela é somente leitura / vazia)
 - [ ] Layout oficial PJe-Calc

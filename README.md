@@ -125,7 +125,7 @@ A planilha atual usa o layout **provisório** `provisional-0.1`. Não é o model
 
 ## Stack
 
-React (Vite) · FastAPI · PostgreSQL · PyMuPDF · pdfplumber · Gemini 3.6 Flash · openpyxl · SQLAlchemy async · Alembic
+React (Vite) · FastAPI · PostgreSQL · PyMuPDF · pdfplumber · Gemini 3.5 Flash-Lite · openpyxl · SQLAlchemy async · Alembic
 
 ## Como rodar
 

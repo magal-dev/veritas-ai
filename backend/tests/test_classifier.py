@@ -231,6 +231,8 @@ def test_gemini_processes_candidates_and_keeps_candidate_order(
     assert mock_models.generate_content.call_count == 3
     http_options = mock_client_cls.call_args.kwargs["http_options"]
     assert http_options.timeout == 90_000
+    assert http_options.retry_options.attempts == 3
+    assert 503 in http_options.retry_options.http_status_codes
     for call in mock_models.generate_content.call_args_list:
         assert call.kwargs["config"].response_mime_type == "application/json"
 

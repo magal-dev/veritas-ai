@@ -30,6 +30,7 @@ from schemas.extraction import (
 RENDER_DPI = 150
 JPEG_QUALITY = 80
 GEMINI_TIMEOUT_SECONDS = 90
+GEMINI_RETRY_ATTEMPTS = 3
 
 GEMINI_PROMPT = """Você é um assistente de extração de documentos trabalhistas brasileiros.
 
@@ -124,7 +125,16 @@ class GeminiDocumentClassifier(DocumentClassifier):
     def __init__(self, api_key: str, model_name: str) -> None:
         self._client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_SECONDS * 1000),
+            http_options=types.HttpOptions(
+                timeout=GEMINI_TIMEOUT_SECONDS * 1000,
+                # 429/5xx são frequentes em picos de demanda; tenta de novo com backoff.
+                retry_options=types.HttpRetryOptions(
+                    attempts=GEMINI_RETRY_ATTEMPTS,
+                    initial_delay=2.0,
+                    max_delay=15.0,
+                    http_status_codes=[429, 500, 503],
+                ),
+            ),
         )
         self._model_name = model_name
         self._config = types.GenerateContentConfig(
