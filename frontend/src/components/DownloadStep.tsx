@@ -51,8 +51,8 @@ export function DownloadStep({
       </CardHeader>
       <CardContent className="space-y-4">
         <AlertInfo>
-          A planilha sai com as abas CartaoPonto, Holerite e MetadadosSessao. As duas
-          primeiras vêm só com o cabeçalho enquanto a extração não estiver ligada.
+          A planilha segue o layout provisório com abas CartaoPonto, Holerite e
+          MetadadosSessao. Linhas extraídas pelo Gemini aparecem nas duas primeiras abas.
         </AlertInfo>
         {error && <Alert>{error}</Alert>}
         <div className="flex flex-col gap-3 sm:flex-row">

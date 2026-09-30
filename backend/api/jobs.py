@@ -14,7 +14,8 @@ ERROR_MESSAGES = {
     "INVALID_FILE_TYPE": "Envie um arquivo PDF.",
     "FILE_TOO_LARGE": "O PDF excede o tamanho máximo permitido.",
     "EMPTY_FILE": "O arquivo enviado está vazio.",
-    "PIPELINE_STUB_ERROR": "Falha ao inspecionar o PDF. Tente outro arquivo.",
+    "PIPELINE_ERROR": "Falha ao processar o PDF. Tente outro arquivo.",
+    "GEMINI_ERROR": "Falha na classificação com Gemini. Verifique a chave da API e tente novamente.",
 }
 
 
@@ -56,8 +57,8 @@ async def create_job(
         status=session.status,
         pdf_page_count=page_count,
         message=(
-            "PDF recebido, páginas contadas e arquivo descartado do servidor. "
-            "A extração Gemini ainda não está ligada nesta fundação."
+            "PDF processado e descartado do servidor. "
+            "Revise os dados extraídos antes de baixar o Excel."
         ),
     )
 

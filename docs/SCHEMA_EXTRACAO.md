@@ -32,7 +32,7 @@ Versão do contrato: `extraction-schema-0.1`
 }
 ```
 
-Na fundação atual o pipeline stub devolve listas vazias. O validador já aplica este schema.
+O pipeline preenche este schema via triagem local + Gemini nas páginas candidatas. Sem `GEMINI_API_KEY` ou sem candidatas, as listas podem ficar vazias. O validador aplica este schema.
 
 ## `TimeCardEntry` (cartão de ponto)
 

@@ -19,10 +19,7 @@ class JobSession:
     created_at: datetime
     extraction: ExtractionResult | None = None
     error_code: str | None = None
-    pipeline_note: str = (
-        "Fundação: extração Gemini e triagem em camadas ainda não estão ligadas. "
-        "O Excel sai no layout provisório, sem linhas de dados."
-    )
+    pipeline_note: str = "Processamento concluído."
     expires_at: datetime = field(init=False)
 
     def __post_init__(self) -> None:

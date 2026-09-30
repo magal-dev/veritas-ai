@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import time
 import uuid
@@ -13,9 +14,9 @@ from fastapi import UploadFile
 from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
-from pipeline.classifier import StubDocumentClassifier
+from pipeline.classifier import build_classifier
 from pipeline.excel_builder import ProvisionalExcelBuilder
-from pipeline.extractor import StubDocumentExtractor
+from pipeline.extractor import LocalDocumentExtractor
 from pipeline.validator import SchemaExtractionValidator
 from repositories.processing_run_repository import ProcessingRunRepository
 from schemas.extraction import ExtractionResult
@@ -32,8 +33,11 @@ class InvalidPdfError(Exception):
 class JobService:
     def __init__(self, run_repository: ProcessingRunRepository | None) -> None:
         self._runs = run_repository
-        self._extractor = StubDocumentExtractor()
-        self._classifier = StubDocumentClassifier()
+        self._extractor = LocalDocumentExtractor()
+        self._classifier = build_classifier(
+            api_key=settings.gemini_api_key,
+            model_name=settings.gemini_model,
+        )
         self._validator = SchemaExtractionValidator()
         self._excel = ProvisionalExcelBuilder()
 
@@ -45,14 +49,31 @@ class JobService:
 
         try:
             tmp_path = await self._write_temp_pdf(upload)
-            signals = self._extractor.extract(tmp_path)
-            classifications = self._classifier.classify(signals)
+            signals = await asyncio.to_thread(self._extractor.extract, tmp_path)
+            try:
+                outcome = await asyncio.to_thread(
+                    self._classifier.classify,
+                    tmp_path,
+                    signals,
+                )
+            except RuntimeError as exc:
+                if str(exc) == "GEMINI_ERROR":
+                    raise InvalidPdfError("GEMINI_ERROR") from exc
+                raise
+
             extraction = ExtractionResult(
                 job_id=job_id,
-                classifications=classifications,
+                classifications=outcome.classifications,
+                time_cards=outcome.time_cards,
+                payslips=outcome.payslips,
+                unclassified_candidate_pages=outcome.unclassified_candidate_pages,
+                missing_fields=outcome.missing_fields,
+                ambiguous_fields=outcome.ambiguous_fields,
+                conflicts=outcome.conflicts,
                 pdf_page_count=signals.pdf_page_count,
-                candidate_page_count=len(signals.candidate_pages),
-                gemini_call_count=0,
+                candidate_page_count=len(signals.candidate_pages)
+                + len(signals.overflow_candidate_pages),
+                gemini_call_count=outcome.gemini_call_count,
             )
             extraction = self._validator.validate(extraction)
         except InvalidPdfError:
@@ -64,7 +85,7 @@ class JobService:
             await self._record_run(
                 job_id=job_id,
                 status=RunStatus.FAILED,
-                error_code="PIPELINE_STUB_ERROR",
+                error_code="PIPELINE_ERROR",
                 duration_ms=duration_ms,
                 finished=True,
             )
@@ -74,11 +95,18 @@ class JobService:
             await upload.close()
             self._unlink(tmp_path)
 
+        pipeline_note = _build_pipeline_note(
+            candidate_count=extraction.candidate_page_count,
+            gemini_calls=extraction.gemini_call_count,
+            has_api_key=bool(settings.gemini_api_key.strip()),
+        )
+
         session = JobSession(
             job_id=job_id,
             status=JobStatus.COMPLETED,
             created_at=datetime.now(timezone.utc),
             extraction=extraction,
+            pipeline_note=pipeline_note,
         )
         session_store.put(session)
 
@@ -88,14 +116,17 @@ class JobService:
             status=RunStatus.COMPLETED,
             pdf_page_count=extraction.pdf_page_count,
             candidate_page_count=extraction.candidate_page_count,
-            gemini_call_count=0,
+            gemini_call_count=extraction.gemini_call_count,
             duration_ms=duration_ms,
             finished=True,
         )
         logger.info(
-            "job.completed job_id=%s pdf_page_count=%s duration_ms=%s",
+            "job.completed job_id=%s pdf_page_count=%s candidate_page_count=%s "
+            "gemini_call_count=%s duration_ms=%s",
             job_id,
             extraction.pdf_page_count,
+            extraction.candidate_page_count,
+            extraction.gemini_call_count,
             duration_ms,
         )
         return session
@@ -168,3 +199,25 @@ class JobService:
             path.unlink(missing_ok=True)
         except OSError:
             logger.warning("job.tempfile_unlink_failed")
+
+
+def _build_pipeline_note(
+    *,
+    candidate_count: int,
+    gemini_calls: int,
+    has_api_key: bool,
+) -> str:
+    if not has_api_key:
+        return (
+            "Triagem local concluída. GEMINI_API_KEY ausente: páginas candidatas "
+            "não foram classificadas. Configure a chave para extração com Gemini."
+        )
+    if candidate_count == 0:
+        return (
+            "Triagem local concluída sem páginas candidatas. PDFs escaneados "
+            "(sem texto extraível) ainda não são suportados nesta versão."
+        )
+    return (
+        f"Triagem local + Gemini concluídas. {candidate_count} página(s) candidata(s), "
+        f"{gemini_calls} chamada(s) à API."
+    )

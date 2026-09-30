@@ -10,13 +10,14 @@ Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar cód
 
 Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera planilha para importação no PJe-Calc. Depois do download, descarta tudo.
 
-Objetivo desta etapa do repositório: **fundação sólida** (estrutura, contratos, fluxo de UI, privacidade). Extração real com Gemini e triagem em 3 camadas são trabalho futuro — os módulos já existem como stubs tipados.
+Objetivo desta etapa do repositório: **fundação sólida** com **triagem em 3 camadas e extração Gemini** nas páginas candidatas. PDFs escaneados (sem texto extraível) e revisão editável permanecem trabalho futuro.
 
 ## 2. Mapa de pastas
 
 ```
 /
 ├── AGENTS.md                 ← você está aqui
+├── CLAUDE.md                 ← guia operacional do Claude Code (importa este arquivo)
 ├── README.md                 ← como rodar
 ├── docker-compose.yml        ← Postgres local (só metadados)
 ├── docs/
@@ -27,8 +28,8 @@ Objetivo desta etapa do repositório: **fundação sólida** (estrutura, contrat
 │   ├── core/                 ← config, database, logging
 │   ├── api/                  ← rotas e controllers
 │   ├── pipeline/             ← estágios do processamento
-│   │   ├── extractor.py      ← Camadas 1–2 (hoje: stub + contagem de páginas)
-│   │   ├── classifier.py     ← Camada 3 Gemini (hoje: stub, NÃO chama a API)
+│   │   ├── extractor.py      ← Camadas 1–2 (PyMuPDF + regex + heurísticas; pdfplumber na shortlist)
+│   │   ├── classifier.py     ← Camada 3 Gemini (só páginas candidatas)
 │   │   ├── validator.py      ← regras + schema Pydantic
 │   │   └── excel_builder.py  ← openpyxl, layout provisional-0.1
 │   ├── models/               ← SQLAlchemy (ProcessingRun apenas)
@@ -49,7 +50,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 |---|---|
 | Frontend | React (Vite + TypeScript) |
 | Backend | Python, FastAPI, Uvicorn |
-| IA / LLM | Google Gemini API (`gemini-1.5-flash`) via `google-generativeai` |
+| IA / LLM | Google Gemini API (`gemini-3.6-flash`, configurável via `GEMINI_MODEL`) via `google-generativeai` |
 | PDF | PyMuPDF (`fitz`) + pdfplumber |
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |
@@ -70,7 +71,7 @@ Fluxo-alvo (quando a extração estiver implementada):
 
 ```
 PDF bruto
-  → extração local (pdfplumber / PyMuPDF)
+  → extração local (PyMuPDF; pdfplumber só na shortlist)
   → filtro por palavras-chave
   → heurísticas de posição e densidade
   → classificação e extração Gemini (só páginas candidatas)
@@ -80,7 +81,7 @@ PDF bruto
   → descarte imediato
 ```
 
-Nesta fundação o pipeline **roda**, mas extractor/classifier devolvem estruturas vazias. O Excel sai com cabeçalhos e zero linhas de dados. A UI percorre o fluxo completo.
+O pipeline **roda** com triagem local e Gemini nas páginas candidatas (máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. PDFs escaneados sem texto extraível retornam extração vazia.
 
 ## 5. Privacidade (Privacy by Design)
 
@@ -94,7 +95,7 @@ Regras obrigatórias:
 
 - Nenhum dado extraído do PDF vai para o banco.
 - PostgreSQL só recebe metadados operacionais: timestamps, status, `pdf_page_count`, `candidate_page_count`, `gemini_call_count`, `error_code`. Sem nome de arquivo, hash de conteúdo, JSON, trechos, CPF, número de processo.
-- O PDF é apagado no `finally` imediatamente após o uso (na fundação: após contar páginas).
+- O PDF é apagado no `finally` imediatamente após o processamento (triagem + Gemini).
 - O Excel é apagado imediatamente após o stream de download.
 - Sem autenticação, cadastro ou histórico neste TCC.
 - Produção deve ser HTTPS. Dev local é HTTP.
@@ -107,18 +108,22 @@ Se uma funcionalidade exigir retenção de dado sensível, recuse e proponha alt
 
 Para PDFs grandes, **nunca** envie todas as páginas ao Gemini. Funil:
 
-**Camada 1 — leitura local (pdfplumber):** texto de todas as páginas, sem custo de API. Filtrar por palavras-chave:
+**Camada 1 — leitura local (PyMuPDF):** texto de todas as páginas (`page.get_text`), sem custo de API. Filtrar por palavras-chave, em dois pesos:
 
 ```
-cartão de ponto, horas trabalhadas, entrada, saída,
-holerite, salário bruto, INSS, FGTS, contracheque
+fortes: cartão de ponto, horas trabalhadas, holerite, salário bruto, contracheque
+fracas: entrada, saída, INSS, FGTS   (aparecem também em petições)
 ```
 
-**Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), posição das candidatas, densidade de texto/tabelas.
+E contar padrões tabulares por regex: horários (`08:00`) e valores monetários (`3.500,00`). Página só com palavra fraca e sem nenhum padrão numérico não é candidata; página sem palavra-chave mas com muitos padrões (continuação de cartão de ponto) é.
 
-**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
+**Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), vizinhos ±1 com padrão numérico, densidade de texto. A detecção de tabelas do pdfplumber (`extract_tables`, cara) roda só na shortlist (top 10), para confirmar e reordenar.
 
-Nesta fundação as camadas 1–3 **não estão implementadas**. Ao implementá-las, respeite o funil. `classifier.py` não deve ser chamado para o PDF inteiro.
+**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (uma por candidata, timeout de 90 s cada), então a latência é a da chamada mais lenta, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
+
+Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`.
+
+As camadas 1–3 estão implementadas. `classifier.py` não deve ser chamado para o PDF inteiro. Sem `GEMINI_API_KEY`, o stub marca candidatas como não classificadas.
 
 ## 7. Contratos de extração
 
@@ -135,17 +140,18 @@ Já existe:
 - Estrutura de pastas e este AGENTS.md
 - FastAPI com jobs stateless (`POST/GET/DELETE`, preview JSON, download xlsx)
 - Store in-memory com TTL
-- Stubs tipados do pipeline
+- Triagem em 3 camadas (PyMuPDF + heurísticas + Gemini em paralelo)
+- Stubs tipados para testes e fallback sem API key
 - `excel_builder` com abas provisórias
 - `ProcessingRun` + Alembic
 - UI: upload, processamento, revisão (empty state), download, erros
 - Descarte de PDF/Excel/sessão
 
-TODO (não faça nesta fundação a menos que o usuário peça):
+TODO (trabalho futuro):
 
-- [ ] Camada 1: pdfplumber + palavras-chave
-- [ ] Camada 2: TOC, posição, densidade
-- [ ] Camada 3: Gemini (`gemini-1.5-flash`) só nas candidatas
+- [x] Camada 1: PyMuPDF + palavras-chave + padrões tabulares
+- [x] Camada 2: TOC, posição, densidade
+- [x] Camada 3: Gemini (padrão `gemini-3.6-flash`, via `GEMINI_MODEL`) só nas candidatas
 - [ ] Tratamento de PDF nativo vs. escaneado
 - [ ] Revisão humana editável (hoje a tabela é somente leitura / vazia)
 - [ ] Layout oficial PJe-Calc
@@ -181,7 +187,7 @@ A API funciona **sem** Postgres: jobs e Excel continuam in-memory; só a linha d
 - Qualidade varia; escaneados vão exigir tratamento visual antes do Gemini (futuro).
 - Layouts de cartão de ponto e holerite variam entre empresas.
 - Extração deve ser auditável na sessão, sem persistência.
-- Gemini (futuro) faz OCR + interpretação semântica nas páginas candidatas.
+- Gemini faz OCR + interpretação semântica nas páginas candidatas (PDFs com texto extraível).
 - Nada processual sobrevive ao fim da sessão.
 
 ## 11. Como responder e implementar (para agentes)

@@ -4,7 +4,7 @@ Extração inteligente de dados processuais para o PJe-Calc — projeto de Traba
 
 Aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha no formato esperado pelo PJe-Calc.
 
-Este repositório está na **fundação**: estrutura, contratos, fluxo de interface e descarte de dados. A extração com Gemini e a triagem em três camadas ainda não estão ligadas — os módulos existem como stubs tipados.
+Este repositório implementa a **triagem em 3 camadas** e a **extração com Gemini** nas páginas candidatas. PDFs escaneados (sem texto extraível) e revisão editável permanecem como trabalho futuro.
 
 Leia [AGENTS.md](AGENTS.md) antes de implementar. Contratos: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md) e [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md).
 
@@ -78,8 +78,8 @@ veritas-ai/
 │   ├── api/               # Rotas HTTP (jobs, health)
 │   ├── services/          # Orquestração: sessão, upload, descarte do PDF
 │   ├── pipeline/          # Estágios do processamento
-│   │   ├── extractor.py   # Camadas 1–2: leitura local e heurísticas (stub)
-│   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração (stub)
+│   │   ├── extractor.py   # Camadas 1–2: PyMuPDF + heurísticas (pdfplumber na shortlist)
+│   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração
 │   │   ├── validator.py   # Validação do JSON contra regras de negócio
 │   │   └── excel_builder.py # Geração do .xlsx (openpyxl)
 │   ├── schemas/           # Contratos Pydantic (API + extração)
@@ -125,7 +125,7 @@ A planilha atual usa o layout **provisório** `provisional-0.1`. Não é o model
 
 ## Stack
 
-React (Vite) · FastAPI · PostgreSQL · PyMuPDF · pdfplumber · Gemini 1.5 Flash · openpyxl · SQLAlchemy async · Alembic
+React (Vite) · FastAPI · PostgreSQL · PyMuPDF · pdfplumber · Gemini 3.6 Flash · openpyxl · SQLAlchemy async · Alembic
 
 ## Como rodar
 
