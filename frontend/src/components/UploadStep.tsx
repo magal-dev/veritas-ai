@@ -43,14 +43,14 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="stagger">
         <CardTitle>Enviar o PDF do processo</CardTitle>
         <CardDescription>
           O arquivo é lido só para contar páginas e em seguida é apagado do servidor.
           Nada do conteúdo processual é gravado em banco.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="stagger space-y-4">
         <label
           htmlFor={inputId}
           className={cn(
@@ -79,7 +79,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
               )}
             />
           ))}
-          <span className="text-accent transition-transform duration-300 group-hover:-translate-y-0.5">
+          <span className={cn('text-accent', !file && 'animate-float')}>
             {file ? (
               <FileText key="file" className="h-7 w-7 animate-pop" strokeWidth={1.25} aria-hidden />
             ) : (

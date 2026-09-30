@@ -32,19 +32,19 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
-          <div className="border-t border-ink/70 pt-3">
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:150ms]">
             <p className="eyebrow text-ink-muted">Páginas no PDF</p>
             <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.pdf_page_count} />
             </p>
           </div>
-          <div className="border-t border-ink/70 pt-3">
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:280ms]">
             <p className="eyebrow text-ink-muted">Páginas candidatas</p>
             <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.candidate_page_count} />
             </p>
           </div>
-          <div className="border-t border-ink/70 pt-3">
+          <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:410ms]">
             <p className="eyebrow text-ink-muted">Chamadas Gemini</p>
             <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.gemini_call_count} />
@@ -77,8 +77,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum cartão de ponto classificado nesta sessão."
                 />
               ) : (
-                extraction.time_cards.map((row) => (
-                  <TableRow key={`${row.date}-${row.source_page}`}>
+                extraction.time_cards.map((row, index) => (
+                  <TableRow
+                    key={`${row.date}-${row.source_page}`}
+                    className="animate-rise"
+                    style={{ animationDelay: `${index * 35}ms` }}
+                  >
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.clock_in ?? '—'}</TableCell>
                     <TableCell>{row.clock_out ?? '—'}</TableCell>
@@ -120,8 +124,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum holerite classificado nesta sessão."
                 />
               ) : (
-                extraction.payslips.map((row) => (
-                  <TableRow key={`${row.competence}-${row.item_name}-${row.source_page}`}>
+                extraction.payslips.map((row, index) => (
+                  <TableRow
+                    key={`${row.competence}-${row.item_name}-${row.source_page}`}
+                    className="animate-rise"
+                    style={{ animationDelay: `${index * 35}ms` }}
+                  >
                     <TableCell>{row.competence}</TableCell>
                     <TableCell>{row.item_name}</TableCell>
                     <TableCell>

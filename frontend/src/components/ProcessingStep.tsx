@@ -1,10 +1,24 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+import { useEffect, useState } from 'react'
+
 type ProcessingStepProps = {
   fileName: string
 }
 
+function useElapsed() {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setSeconds((value) => value + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
+  const ss = String(seconds % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+}
+
 export function ProcessingStep({ fileName }: ProcessingStepProps) {
+  const elapsed = useElapsed()
   return (
     <Card>
       <CardHeader>
@@ -26,9 +40,10 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
           <span className="eyebrow mr-2">Lendo</span>
           <span className="font-display text-xl text-ink">{fileName}</span>
         </p>
-        <div className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-rule">
-          <div className="h-full w-1/2 animate-indeterminate rounded-full bg-accent" />
+        <div className="h-px w-full max-w-xs overflow-hidden bg-rule">
+          <div className="h-full w-1/2 animate-indeterminate bg-accent" />
         </div>
+        <p className="eyebrow tabular-nums text-ink-muted">Tempo de sessão · {elapsed}</p>
       </CardContent>
     </Card>
   )

@@ -22,6 +22,14 @@ const emptySession: SessionState = {
   extraction: null,
 }
 
+const TITLE = [
+  { text: 'Extração' },
+  { text: 'inteligente' },
+  { text: 'de' },
+  { text: 'dados', italic: true },
+  { text: 'processuais', italic: true },
+]
+
 function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     return String((error as ApiError).message)
@@ -109,16 +117,34 @@ export default function App() {
   return (
     <div className="min-h-svh">
       <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-1/4 -top-1/2 h-[140%] w-3/4 animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(236,231,211,0.10),transparent)]"
+        />
         <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-6 pb-9 pt-6 sm:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img src="/logo-light.png" alt="" className="h-9 w-9 animate-fade object-contain" />
-              <span className="font-display text-2xl tracking-[0.04em]">Veritas AI</span>
+              <img src="/logo-light.png" alt="" className="h-9 w-9 animate-pop object-contain" />
+              <span className="font-display text-2xl tracking-[0.04em] animate-fade [animation-delay:200ms]">
+                Veritas AI
+              </span>
             </div>
-            <Badge className="border-offwhite/30 text-offwhite/80">Fundação 0.1</Badge>
+            <Badge className="animate-fade border-offwhite/30 text-offwhite/80 [animation-delay:400ms]">
+              Fundação 0.1
+            </Badge>
           </div>
-          <h1 className="animate-rise font-display text-4xl leading-[1] tracking-[-0.02em] sm:text-5xl">
-            Extração inteligente de <em className="text-offwhite/80">dados processuais</em>
+          <h1 className="font-display text-4xl leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
+            {TITLE.map((word, index) => (
+              <span key={word.text} aria-hidden className="inline-block overflow-hidden pb-1 align-bottom">
+                <span
+                  className={`inline-block animate-reveal ${word.italic ? 'italic text-offwhite/80' : ''}`}
+                  style={{ animationDelay: `${250 + index * 90}ms` }}
+                >
+                  {word.text}
+                  {'\u00A0'}
+                </span>
+              </span>
+            ))}
           </h1>
         </div>
       </header>

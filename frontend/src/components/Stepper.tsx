@@ -29,16 +29,14 @@ export function Stepper({ current }: StepperProps) {
           return (
             <li key={step.id} aria-current={active ? 'step' : undefined} className="flex flex-col gap-3">
               <span className="relative block h-px bg-rule">
+                {(done || active) && (
+                  <span className="absolute inset-0 block origin-left animate-draw bg-accent" />
+                )}
                 <span
                   className={cn(
-                    'absolute inset-y-0 left-0 block bg-accent transition-[width] duration-700 ease-out',
-                    done || active ? 'w-full' : 'w-0',
-                  )}
-                />
-                <span
-                  className={cn(
-                    'absolute -top-[3px] left-0 block h-[7px] w-[7px] rotate-45 border transition-colors duration-500',
+                    'absolute -top-[3px] left-0 block h-[7px] w-[7px] rotate-45 border transition-all duration-500',
                     done || active ? 'border-accent bg-accent' : 'border-rule bg-paper',
+                    active && 'scale-150',
                   )}
                 />
               </span>
