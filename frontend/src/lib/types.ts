@@ -29,6 +29,13 @@ export type PayslipEntry = {
   ambiguous_fields: string[]
 }
 
+export type Conflict = {
+  field: string
+  values: unknown[]
+  source_pages: number[]
+  note: string | null
+}
+
 export type ExtractionResult = {
   schema_version: string
   job_id: string
@@ -37,7 +44,7 @@ export type ExtractionResult = {
   unclassified_candidate_pages: number[]
   missing_fields: string[]
   ambiguous_fields: string[]
-  conflicts: unknown[]
+  conflicts: Conflict[]
   pdf_page_count: number
   candidate_page_count: number
   gemini_call_count: number

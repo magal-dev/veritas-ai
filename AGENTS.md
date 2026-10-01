@@ -144,6 +144,7 @@ Já existe:
 - Store in-memory com TTL
 - Triagem em 3 camadas (PyMuPDF + heurísticas + Gemini em paralelo)
 - Stubs tipados para testes e fallback sem API key
+- Validador com regras de formato, coerência da jornada, duplicatas e conflitos entre páginas (sem regras jurídicas; ver `docs/SCHEMA_EXTRACAO.md`)
 - `excel_builder` com abas provisórias
 - `ProcessingRun` + Alembic
 - UI: upload, processamento, revisão (empty state), download, erros

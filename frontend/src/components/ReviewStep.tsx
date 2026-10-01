@@ -4,12 +4,14 @@ import { CountUp } from '@/components/CountUp'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { fieldList } from '@/lib/fields'
 import { toPageRanges } from '@/lib/pages'
 import type { ExtractionResult } from '@/lib/types'
 
 const INITIAL_ROWS = 10
 const ROWS_STEP = 20
 const INITIAL_RANGES = 12
+const INITIAL_CONFLICTS = 5
 
 type ReviewStepProps = {
   extraction: ExtractionResult
@@ -67,20 +69,43 @@ function rowDelay(index: number, visible: number): string {
   return `${Math.min(index < INITIAL_ROWS ? index : offset, 20) * 30}ms`
 }
 
-function lowConfidenceClass(confidence: number): string {
-  return confidence < 0.5 ? 'bg-accent/6' : ''
+function needsAttention(row: { confidence: number; missing_fields: string[]; ambiguous_fields: string[] }): boolean {
+  return row.confidence < 0.5 || row.missing_fields.length > 0 || row.ambiguous_fields.length > 0
+}
+
+function attentionClass(row: Parameters<typeof needsAttention>[0]): string {
+  return needsAttention(row) ? 'bg-accent/6' : ''
+}
+
+function attentionTitle(row: Parameters<typeof needsAttention>[0]): string | undefined {
+  const notes = [
+    row.confidence < 0.5 ? 'confiança baixa' : '',
+    row.missing_fields.length > 0 ? `ausente: ${fieldList(row.missing_fields)}` : '',
+    row.ambiguous_fields.length > 0 ? `conferir: ${fieldList(row.ambiguous_fields)}` : '',
+  ].filter(Boolean)
+  return notes.length > 0 ? notes.join(' · ') : undefined
+}
+
+function pageLabel(pages: number[]): string {
+  const ranges = toPageRanges(pages)
+  return `${pages.length > 1 ? 'pp.' : 'p.'} ${ranges.join(', ')}`
 }
 
 export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProps) {
   const hasQualityIssues =
     extraction.unclassified_candidate_pages.length > 0 ||
     extraction.missing_fields.length > 0 ||
+    extraction.ambiguous_fields.length > 0 ||
     extraction.conflicts.length > 0
   const [timeCardRows, setTimeCardRows] = useState(INITIAL_ROWS)
   const [payslipRows, setPayslipRows] = useState(INITIAL_ROWS)
   const [showAllRanges, setShowAllRanges] = useState(false)
+  const [showAllConflicts, setShowAllConflicts] = useState(false)
   const unclassifiedRanges = toPageRanges(extraction.unclassified_candidate_pages)
   const visibleRanges = showAllRanges ? unclassifiedRanges : unclassifiedRanges.slice(0, INITIAL_RANGES)
+  const visibleConflicts = showAllConflicts
+    ? extraction.conflicts
+    : extraction.conflicts.slice(0, INITIAL_CONFLICTS)
 
   return (
     <div className="space-y-4">
@@ -154,10 +179,47 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               </div>
             )}
             {extraction.missing_fields.length > 0 && (
-              <p>Campos ausentes: {extraction.missing_fields.join(', ')}</p>
+              <p>Campos ausentes: {fieldList(extraction.missing_fields)}</p>
+            )}
+            {extraction.ambiguous_fields.length > 0 && (
+              <p>
+                Campos a conferir (leitura ambígua, fora do formato ou fora de ordem):{' '}
+                {fieldList(extraction.ambiguous_fields)}
+              </p>
             )}
             {extraction.conflicts.length > 0 && (
-              <p>{extraction.conflicts.length} conflito(s) entre documentos.</p>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-display text-2xl leading-none text-accent">
+                    {extraction.conflicts.length}
+                  </span>{' '}
+                  conflito(s) entre páginas — os dois valores seguem para o Excel; confira no PDF.
+                </p>
+                <ul className="space-y-1.5" aria-label="Conflitos entre páginas">
+                  {visibleConflicts.map((conflict, index) => (
+                    <li
+                      key={`${conflict.field}-${index}`}
+                      className="flex flex-col gap-1 border-l-2 border-accent/60 pl-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                    >
+                      <span className="text-ink">{conflict.note ?? conflict.field}</span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums">
+                        {pageLabel(conflict.source_pages)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {extraction.conflicts.length > INITIAL_CONFLICTS && (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-accent underline-offset-2 hover:underline"
+                    onClick={() => setShowAllConflicts((value) => !value)}
+                  >
+                    {showAllConflicts
+                      ? 'ver menos'
+                      : `+${extraction.conflicts.length - INITIAL_CONFLICTS} conflitos`}
+                  </button>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -189,8 +251,9 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               ) : (
                 extraction.time_cards.slice(0, timeCardRows).map((row, index) => (
                   <TableRow
-                    key={`${row.date}-${row.source_page}`}
-                    className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
+                    key={`${row.date}-${row.source_page}-${index}`}
+                    className={`animate-rise ${attentionClass(row)}`}
+                    title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, timeCardRows) }}
                   >
                     <TableCell>{row.date}</TableCell>
@@ -242,8 +305,9 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               ) : (
                 extraction.payslips.slice(0, payslipRows).map((row, index) => (
                   <TableRow
-                    key={`${row.competence}-${row.item_name}-${row.source_page}`}
-                    className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
+                    key={`${row.competence}-${row.item_name}-${row.source_page}-${index}`}
+                    className={`animate-rise ${attentionClass(row)}`}
+                    title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, payslipRows) }}
                   >
                     <TableCell>{row.competence}</TableCell>
