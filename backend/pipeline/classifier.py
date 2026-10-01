@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import fitz
+import pymupdf as fitz
 from google import genai
 from google.genai import types
 

@@ -32,12 +32,14 @@ alembic revision -m "descricao"          # nova migration (só metadados operaci
 python scripts/generate_sample_pdf.py    # gera tests/fixtures/processo_exemplo.pdf
 python scripts/test_sample_pdf.py        # POST /jobs + GET /preview e imprime o resumo
 python scripts/benchmark_pipeline.py 300 # tempo da triagem local (sem Gemini) em PDF sintético
+python scripts/evaluate_extraction.py processo.pdf gabarito.json  # métricas contra gabarito (PDF real fica fora do repo)
 
 # Frontend (a partir de frontend/)
 npm install
 npm run dev -- --host 127.0.0.1 --port 4174
 npm run build                            # tsc -b + vite build (serve como typecheck)
 npm run lint                             # oxlint
+npm test                                 # vitest (lógica de revisão e cliente da API)
 ```
 
 ## Fluxo de uma requisição (`POST /api/v1/jobs`)
@@ -72,7 +74,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 ## Testes
 
 - Nunca chame o Gemini real em testes. Use `StubDocumentClassifier` ou faça patch de `pipeline.classifier.genai.Client` (o mock responde em `.return_value.models.generate_content`) (padrão em `tests/test_classifier.py`).
-- Gere PDFs de teste em memória com `fitz` (PyMuPDF) dentro do `tmp_path`. Não commite PDFs com dados reais.
+- Gere PDFs de teste em memória com PyMuPDF (`import pymupdf as fitz`; o módulo `fitz` está depreciado) dentro do `tmp_path`. Não commite PDFs com dados reais.
 - `asyncio_mode = "auto"`: testes `async def` não precisam de decorator.
 - A API deve funcionar sem Postgres; os testes não podem depender de banco.
 
@@ -85,12 +87,12 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 ## CI
 
-`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + build do frontend. Não há deploy (HTTPS/deploy é TODO). Dependabot semanal para pip e npm.
+`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + testes (Vitest) + build do frontend. Depreciação conhecida do `TestClient` com `httpx` vira erro no pytest (`filterwarnings`). Não há deploy (HTTPS/deploy é TODO). Dependabot semanal para pip e npm.
 
 ## Antes de concluir uma tarefa
 
 1. `pytest` verde em `backend/`.
-2. Se tocou no frontend: `npm run build` e `npm run lint` em `frontend/`.
+2. Se tocou no frontend: `npm run build`, `npm run lint` e `npm test` em `frontend/`.
 3. Se mudou algum contrato (JSON, Excel, API), atualize o doc correspondente em `docs/` e os tipos do frontend.
 4. Se concluiu um item do TODO, marque-o na seção 8 do `AGENTS.md`.
 5. Revise se algum dado processual passou a ser logado, persistido ou retido além da sessão.

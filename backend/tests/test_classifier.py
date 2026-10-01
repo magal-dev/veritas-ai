@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from pipeline.classifier import (

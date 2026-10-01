@@ -10,7 +10,7 @@ Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar cód
 
 Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera planilha para importação no PJe-Calc. Depois do download, descarta tudo.
 
-Objetivo desta etapa do repositório: **fundação sólida** com **triagem em 3 camadas e extração Gemini** nas páginas candidatas. PDFs escaneados (sem texto extraível) e revisão editável permanecem trabalho futuro.
+Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local, OCR pelo Gemini), com revisão editável antes do Excel. Layout oficial do PJe-Calc e deploy HTTPS permanecem trabalho futuro.
 
 ## 2. Mapa de pastas
 
@@ -51,7 +51,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 | Frontend | React (Vite + TypeScript) |
 | Backend | Python, FastAPI, Uvicorn |
 | IA / LLM | Google Gemini API (`gemini-3.5-flash-lite`, configurável via `GEMINI_MODEL`) via `google-genai` (SDK oficial; `google-generativeai` foi descontinuado) |
-| PDF | PyMuPDF (`fitz`) + pdfplumber |
+| PDF | PyMuPDF (`import pymupdf as fitz`) + pdfplumber |
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |
 | Banco | PostgreSQL (Neon em nuvem; Compose na máquina local) |
@@ -67,7 +67,7 @@ Duas abordagens complementares:
 1. **Layered:** React (apresentação) → FastAPI (API) → pipeline de IA (processamento) → PostgreSQL (dados operacionais).
 2. **Pipeline:** cada estágio transforma e passa adiante.
 
-Fluxo-alvo (quando a extração estiver implementada):
+Fluxo implementado:
 
 ```
 PDF bruto
@@ -123,7 +123,7 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 
 **Trilha visual (PDF escaneado):** página com até 200 caracteres não brancos de texto extraível e alguma imagem embutida, ou com imagem cobrindo ≥ 85% da página e sem sinal de texto, é página visual. Ela é pontuada sem API por um pixmap cinza de 72 DPI: proporção de tinta, faixas de linhas com tinta e traços horizontais. Página em branco ou carimbo isolado não entra. Vizinho ±1 só entra se também for página visual (continuação de cartão escaneado). `extract_tables` nunca roda em página só imagem. Candidatas de texto têm prioridade; as visuais ocupam as vagas restantes até 25, e o Gemini faz o OCR delas na camada 3. Uma petição escaneada pode ocupar uma vaga restante e é classificada como `IRRELEVANTE`.
 
-Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`.
+Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`. Acurácia ponta a ponta contra gabarito feito à mão: `python scripts/evaluate_extraction.py processo.pdf gabarito.json` (só métricas na saída; PDF e gabarito reais ficam fora do repositório).
 
 As camadas 1–3 estão implementadas. `classifier.py` não deve ser chamado para o PDF inteiro. Sem `GEMINI_API_KEY`, o stub marca candidatas como não classificadas.
 
@@ -149,6 +149,8 @@ Já existe:
 - `ProcessingRun` + Alembic
 - UI: upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
 - Descarte de PDF/Excel/sessão
+- Testes do frontend (Vitest) para a lógica de revisão e o cliente da API
+- Script de avaliação ponta a ponta contra gabarito (`scripts/evaluate_extraction.py`)
 
 TODO (trabalho futuro):
 
@@ -158,6 +160,7 @@ TODO (trabalho futuro):
 - [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
 - [x] Revisão humana editável (tabelas + `PATCH /extraction`; Excel bloqueado com conflitos abertos)
 - [ ] Layout oficial PJe-Calc
+- [ ] Avaliação com processos reais anonimizados (script pronto; falta o conjunto de PDFs + gabaritos)
 - [ ] HTTPS / deploy
 - [ ] Autenticação e histórico (fora de escopo; só como trabalho futuro acadêmico)
 
@@ -187,10 +190,10 @@ A API funciona **sem** Postgres: jobs e Excel continuam in-memory; só a linha d
 ## 10. Premissas de domínio
 
 - Um PDF mistura tipos documentais.
-- Qualidade varia; escaneados vão exigir tratamento visual antes do Gemini (futuro).
+- Qualidade varia; escaneados passam pela triagem visual local antes do Gemini.
 - Layouts de cartão de ponto e holerite variam entre empresas.
 - Extração deve ser auditável na sessão, sem persistência.
-- Gemini faz OCR + interpretação semântica nas páginas candidatas (PDFs com texto extraível).
+- Gemini faz OCR + interpretação semântica nas páginas candidatas (nativas e escaneadas).
 - Nada processual sobrevive ao fim da sessão.
 
 ## 11. Como responder e implementar (para agentes)

@@ -14,7 +14,7 @@ import random
 import sys
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 

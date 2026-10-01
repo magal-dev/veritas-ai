@@ -26,7 +26,7 @@ Fluxo de uma requisição: **upload → triagem → extração → validação �
 
 Em um PDF sintético de 300 páginas, a triagem local (camadas 1 e 2) leva cerca de 0,2 s. Para medir na sua máquina, use `python scripts/benchmark_pipeline.py 300`.
 
-O modelo padrão `gemini-3.5-flash-lite` foi escolhido com `scripts/evaluate_models.py`, que compara modelos contra um PDF sintético de gabarito conhecido. A acurácia em documentos reais ainda não foi medida.
+O modelo padrão `gemini-3.5-flash-lite` foi escolhido com `scripts/evaluate_models.py`, que compara modelos contra um PDF sintético de gabarito conhecido. A acurácia em documentos reais ainda não foi medida; `scripts/evaluate_extraction.py` faz essa medição contra um gabarito feito à mão (ver "Testes e scripts").
 
 ### Interface
 
@@ -209,13 +209,18 @@ python scripts/test_sample_pdf.py          # POST /jobs + GET /preview e imprime
 # Medições
 python scripts/benchmark_pipeline.py 300   # tempo da triagem local, sem Gemini
 python scripts/evaluate_models.py          # compara modelos Gemini com gabarito sintético (usa a API)
+python scripts/evaluate_extraction.py processo.pdf gabarito.json [--json m.json] [--local-only]
+                                           # pipeline completo contra gabarito; imprime só métricas
 
 # Frontend (a partir de frontend/)
 npm run build                              # tsc -b + vite build
 npm run lint                               # oxlint
+npm test                                   # vitest
 ```
 
 Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do cliente `google-genai`.
+
+**Avaliação com processos reais.** O formato do gabarito está no topo de `scripts/evaluate_extraction.py`. A saída tem só contagens e porcentagens (recall/precisão da triagem, acurácia da classificação, horários e verbas corretos, itens inventados, chamadas e tempo). PDFs e gabaritos reais contêm dados pessoais: mantenha-os fora do repositório (a pasta `avaliacao-local/` e arquivos `*.gabarito.json` são ignorados pelo git) e apague-os ao terminar.
 
 ## Privacidade
 
