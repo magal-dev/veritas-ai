@@ -147,7 +147,7 @@ Já existe:
 - Validador com regras de formato, coerência da jornada, duplicatas e conflitos entre páginas (sem regras jurídicas; ver `docs/SCHEMA_EXTRACAO.md`)
 - `excel_builder` com abas provisórias
 - `ProcessingRun` + Alembic
-- UI: upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
+- UI: tela inicial de apresentação, upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
 - Descarte de PDF/Excel/sessão
 - Testes do frontend (Vitest) para a lógica de revisão e o cliente da API
 - Script de avaliação ponta a ponta contra gabarito (`scripts/evaluate_extraction.py`)
