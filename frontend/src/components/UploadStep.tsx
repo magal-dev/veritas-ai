@@ -107,9 +107,8 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
             A triagem local identifica cartões de ponto e holerites. O Gemini classifica
-            até 25 páginas candidatas por processo, em no máximo 5 chamadas. PDFs
-            escaneados (sem texto) ainda não
-            são suportados.
+            até 25 páginas candidatas por processo, em no máximo 5 chamadas. Páginas
+            escaneadas entram na triagem pelo aspecto de tabela e são lidas pelo Gemini.
           </p>
           <Button
             type="button"
