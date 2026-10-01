@@ -20,15 +20,24 @@ function EmptyRow({ columns, message }: { columns: number; message: string }) {
   )
 }
 
+function lowConfidenceClass(confidence: number): string {
+  return confidence < 0.5 ? 'bg-accent/6' : ''
+}
+
 export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProps) {
+  const hasQualityIssues =
+    extraction.unclassified_candidate_pages.length > 0 ||
+    extraction.missing_fields.length > 0 ||
+    extraction.conflicts.length > 0
+
   return (
     <div className="space-y-4">
       <Card className="animate-rise">
         <CardHeader>
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
-            Os dados extraídos existem só nesta sessão. Nesta fundação a tabela fica
-            vazia de propósito: ainda não há classificação de cartão de ponto nem holerite.
+            Os dados extraídos existem só nesta sessão. Revise cartões de ponto e
+            holerites antes de gerar o Excel.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
@@ -52,6 +61,28 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           </div>
         </CardContent>
       </Card>
+
+      {hasQualityIssues && (
+        <Card className="animate-rise [animation-delay:60ms]">
+          <CardHeader>
+            <CardTitle className="text-base">Pendências da extração</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-ink-muted">
+            {extraction.unclassified_candidate_pages.length > 0 && (
+              <p>
+                Páginas candidatas não classificadas:{' '}
+                {extraction.unclassified_candidate_pages.join(', ')}
+              </p>
+            )}
+            {extraction.missing_fields.length > 0 && (
+              <p>Campos ausentes: {extraction.missing_fields.join(', ')}</p>
+            )}
+            {extraction.conflicts.length > 0 && (
+              <p>{extraction.conflicts.length} conflito(s) entre documentos.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="animate-rise [animation-delay:120ms]">
         <CardHeader>
@@ -80,7 +111,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                 extraction.time_cards.map((row, index) => (
                   <TableRow
                     key={`${row.date}-${row.source_page}`}
-                    className="animate-rise"
+                    className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
                     style={{ animationDelay: `${index * 35}ms` }}
                   >
                     <TableCell>{row.date}</TableCell>
@@ -127,7 +158,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                 extraction.payslips.map((row, index) => (
                   <TableRow
                     key={`${row.competence}-${row.item_name}-${row.source_page}`}
-                    className="animate-rise"
+                    className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
                     style={{ animationDelay: `${index * 35}ms` }}
                   >
                     <TableCell>{row.competence}</TableCell>

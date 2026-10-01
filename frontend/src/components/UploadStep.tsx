@@ -46,7 +46,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
       <CardHeader className="stagger">
         <CardTitle>Enviar o PDF do processo</CardTitle>
         <CardDescription>
-          O arquivo é lido só para contar páginas e em seguida é apagado do servidor.
+          O PDF é triado localmente e as páginas candidatas são enviadas ao Gemini.
           Nada do conteúdo processual é gravado em banco.
         </CardDescription>
       </CardHeader>
@@ -106,8 +106,9 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
-            A extração com Gemini ainda não está ligada. Você vai percorrer o fluxo
-            completo e baixar a planilha no layout provisório, sem linhas de dados.
+            A triagem local identifica cartões de ponto e holerites. O Gemini classifica
+            até 5 páginas candidatas por processo. PDFs escaneados (sem texto) ainda não
+            são suportados.
           </p>
           <Button
             type="button"

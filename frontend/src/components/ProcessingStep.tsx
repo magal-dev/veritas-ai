@@ -30,8 +30,8 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
       <CardHeader className="relative">
         <CardTitle>Processando na sessão</CardTitle>
         <CardDescription>
-          O PDF não permanece no servidor. Nesta fundação, o pipeline só conta páginas
-          e devolve um JSON vazio — as camadas de triagem e o Gemini entram depois.
+          O PDF não permanece no servidor. A triagem local e a classificação Gemini
+          rodam nesta sessão — os dados ficam só em memória.
         </CardDescription>
       </CardHeader>
       <CardContent className="relative flex flex-col items-center gap-5 py-8" role="status" aria-live="polite">

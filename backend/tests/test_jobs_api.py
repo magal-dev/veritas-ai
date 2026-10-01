@@ -5,7 +5,7 @@ import fitz
 from fastapi.testclient import TestClient
 
 from main import app
-from pipeline.extractor import StubDocumentExtractor
+from pipeline.extractor import LocalDocumentExtractor
 from schemas.extraction import ExtractionResult
 from pipeline.validator import SchemaExtractionValidator
 
@@ -30,7 +30,7 @@ def test_health_reports_ok():
 def test_job_flow_counts_pages_and_returns_empty_extraction(tmp_path):
     pdf_path = tmp_path / "processo.pdf"
     pdf_path.write_bytes(_pdf_bytes(4))
-    signals = StubDocumentExtractor().extract(pdf_path)
+    signals = LocalDocumentExtractor().extract(pdf_path)
     assert signals.pdf_page_count == 4
     assert signals.candidate_pages == []
 

@@ -1,7 +1,9 @@
 """Engine async do PostgreSQL. Uso exclusivo: metadados operacionais."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -26,10 +28,18 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+DB_PROBE_TIMEOUT_SECONDS = 3
+
+
+async def _probe() -> None:
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
+
+
 async def database_is_reachable() -> bool:
+    # Sem Postgres local, a API segue sem metadados; não pode travar a primeira requisição.
     try:
-        async with engine.connect() as connection:
-            await connection.execute(__import__("sqlalchemy").text("SELECT 1"))
+        await asyncio.wait_for(_probe(), timeout=DB_PROBE_TIMEOUT_SECONDS)
         return True
     except Exception:
         return False

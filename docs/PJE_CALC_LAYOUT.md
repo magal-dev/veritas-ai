@@ -48,7 +48,7 @@ Apenas contagens e timestamps — **sem** nome das partes, CPF, número do proce
 | payslip_rows | inteiro |
 | pdf_page_count | inteiro (metadado operacional) |
 | candidate_page_count | inteiro |
-| gemini_call_count | inteiro (nesta fundação: 0) |
+| gemini_call_count | inteiro (0–5 por processo) |
 
 ## Regras de privacidade na geração
 
