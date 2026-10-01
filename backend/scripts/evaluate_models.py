@@ -344,7 +344,11 @@ def _evaluate(model: str, thinking: str, runs: int, image_parts: dict, truths: l
                 time.sleep(delay)
                 started = time.perf_counter()
                 try:
-                    outcome = classifier._call_model(image_parts[truth.page_number], truth.page_number)
+                    outcome = classifier._call_model(
+                        [(truth.page_number, image_parts[truth.page_number])]
+                    ).get(truth.page_number)
+                    if outcome is None:
+                        raise ValueError("PAGE_MISSING")
                     score.latencies.append(time.perf_counter() - started)
                     break
                 except errors.APIError as exc:

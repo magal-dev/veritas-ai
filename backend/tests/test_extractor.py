@@ -45,8 +45,8 @@ def test_extractor_ignores_pages_without_keywords(tmp_path: Path):
     assert signals.overflow_candidate_pages == []
 
 
-def test_extractor_caps_candidates_at_five(tmp_path: Path):
-    texts = [f"holerite INSS pagina {index}" for index in range(1, 8)]
+def test_extractor_caps_candidates(tmp_path: Path):
+    texts = [f"holerite INSS pagina {index}" for index in range(1, MAX_CANDIDATE_PAGES + 3)]
     pdf_path = tmp_path / "many.pdf"
     pdf_path.write_bytes(_pdf_with_pages(texts))
 
@@ -121,3 +121,17 @@ def test_extractor_includes_neighbor_with_numeric_patterns(tmp_path: Path):
     signals = LocalDocumentExtractor().extract(pdf_path)
 
     assert signals.candidate_pages == [1, 2]
+
+
+def test_extractor_skips_petition_with_few_numbers(tmp_path: Path):
+    petition = (
+        "Requer FGTS e INSS. Jornada com entrada as 08:00 e saida as 18:00.\n"
+        "Da-se a causa o valor de R$ 85.000,00."
+    )
+    pdf_path = tmp_path / "peticao_numeros.pdf"
+    pdf_path.write_bytes(_pdf_with_pages([petition, "Holerite competencia 03/2024"]))
+
+    signals = LocalDocumentExtractor().extract(pdf_path)
+
+    assert signals.candidate_pages == [2]
+    assert signals.overflow_candidate_pages == []

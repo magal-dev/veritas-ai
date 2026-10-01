@@ -1,8 +1,15 @@
+import { useState } from 'react'
+
 import { CountUp } from '@/components/CountUp'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { toPageRanges } from '@/lib/pages'
 import type { ExtractionResult } from '@/lib/types'
+
+const INITIAL_ROWS = 10
+const ROWS_STEP = 20
+const INITIAL_RANGES = 12
 
 type ReviewStepProps = {
   extraction: ExtractionResult
@@ -20,6 +27,46 @@ function EmptyRow({ columns, message }: { columns: number; message: string }) {
   )
 }
 
+function ShowMore({
+  visible,
+  total,
+  onMore,
+  onCollapse,
+}: {
+  visible: number
+  total: number
+  onMore: () => void
+  onCollapse: () => void
+}) {
+  if (total <= INITIAL_ROWS) return null
+  const remaining = total - visible
+  return (
+    <div className="mt-4 flex flex-col items-center gap-2 border-t border-rule pt-4 sm:flex-row sm:justify-between">
+      <p className="text-xs text-ink-muted">
+        Exibindo {Math.min(visible, total)} de {total} linhas
+      </p>
+      <div className="flex gap-2">
+        {visible > INITIAL_ROWS && (
+          <Button type="button" variant="ghost" size="sm" onClick={onCollapse}>
+            Recolher
+          </Button>
+        )}
+        {remaining > 0 && (
+          <Button type="button" variant="secondary" size="sm" onClick={onMore}>
+            Mostrar mais {Math.min(ROWS_STEP, remaining)}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function rowDelay(index: number, visible: number): string {
+  // Só as linhas recém-reveladas animam, em cascata curta.
+  const offset = Math.max(0, index - (visible - ROWS_STEP))
+  return `${Math.min(index < INITIAL_ROWS ? index : offset, 20) * 30}ms`
+}
+
 function lowConfidenceClass(confidence: number): string {
   return confidence < 0.5 ? 'bg-accent/6' : ''
 }
@@ -29,6 +76,11 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
     extraction.unclassified_candidate_pages.length > 0 ||
     extraction.missing_fields.length > 0 ||
     extraction.conflicts.length > 0
+  const [timeCardRows, setTimeCardRows] = useState(INITIAL_ROWS)
+  const [payslipRows, setPayslipRows] = useState(INITIAL_ROWS)
+  const [showAllRanges, setShowAllRanges] = useState(false)
+  const unclassifiedRanges = toPageRanges(extraction.unclassified_candidate_pages)
+  const visibleRanges = showAllRanges ? unclassifiedRanges : unclassifiedRanges.slice(0, INITIAL_RANGES)
 
   return (
     <div className="space-y-4">
@@ -67,12 +119,39 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           <CardHeader>
             <CardTitle className="text-base">Pendências da extração</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-ink-muted">
+          <CardContent className="space-y-4 text-sm text-ink-muted">
             {extraction.unclassified_candidate_pages.length > 0 && (
-              <p>
-                Páginas candidatas não classificadas:{' '}
-                {extraction.unclassified_candidate_pages.join(', ')}
-              </p>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-display text-2xl leading-none text-accent">
+                    {extraction.unclassified_candidate_pages.length}
+                  </span>{' '}
+                  página(s) candidata(s) não classificada(s)
+                </p>
+                <ul className="flex flex-wrap gap-1.5" aria-label="Páginas não classificadas">
+                  {visibleRanges.map((range) => (
+                    <li
+                      key={range}
+                      className="rounded-full border border-rule bg-paper-2 px-2.5 py-0.5 font-mono text-xs tabular-nums text-ink"
+                    >
+                      {range.includes('–') ? `pp. ${range}` : `p. ${range}`}
+                    </li>
+                  ))}
+                  {unclassifiedRanges.length > INITIAL_RANGES && (
+                    <li>
+                      <button
+                        type="button"
+                        className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-accent underline-offset-2 hover:underline"
+                        onClick={() => setShowAllRanges((value) => !value)}
+                      >
+                        {showAllRanges
+                          ? 'ver menos'
+                          : `+${unclassifiedRanges.length - INITIAL_RANGES} intervalos`}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
             )}
             {extraction.missing_fields.length > 0 && (
               <p>Campos ausentes: {extraction.missing_fields.join(', ')}</p>
@@ -108,11 +187,11 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum cartão de ponto classificado nesta sessão."
                 />
               ) : (
-                extraction.time_cards.map((row, index) => (
+                extraction.time_cards.slice(0, timeCardRows).map((row, index) => (
                   <TableRow
                     key={`${row.date}-${row.source_page}`}
                     className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
-                    style={{ animationDelay: `${index * 35}ms` }}
+                    style={{ animationDelay: rowDelay(index, timeCardRows) }}
                   >
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.clock_in ?? '—'}</TableCell>
@@ -129,6 +208,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               )}
             </TableBody>
           </Table>
+          <ShowMore
+            visible={timeCardRows}
+            total={extraction.time_cards.length}
+            onMore={() => setTimeCardRows((rows) => rows + ROWS_STEP)}
+            onCollapse={() => setTimeCardRows(INITIAL_ROWS)}
+          />
         </CardContent>
       </Card>
 
@@ -155,11 +240,11 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   message="Nenhum holerite classificado nesta sessão."
                 />
               ) : (
-                extraction.payslips.map((row, index) => (
+                extraction.payslips.slice(0, payslipRows).map((row, index) => (
                   <TableRow
                     key={`${row.competence}-${row.item_name}-${row.source_page}`}
                     className={`animate-rise ${lowConfidenceClass(row.confidence)}`}
-                    style={{ animationDelay: `${index * 35}ms` }}
+                    style={{ animationDelay: rowDelay(index, payslipRows) }}
                   >
                     <TableCell>{row.competence}</TableCell>
                     <TableCell>{row.item_name}</TableCell>
@@ -176,6 +261,12 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               )}
             </TableBody>
           </Table>
+          <ShowMore
+            visible={payslipRows}
+            total={extraction.payslips.length}
+            onMore={() => setPayslipRows((rows) => rows + ROWS_STEP)}
+            onCollapse={() => setPayslipRows(INITIAL_ROWS)}
+          />
         </CardContent>
       </Card>
 

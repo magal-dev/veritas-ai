@@ -19,7 +19,7 @@ Fluxo de uma requisição: **upload → triagem → extração → validação �
    - Palavras **fracas** (`entrada`, `saída`, `INSS`, `FGTS`) aparecem também em petições e pesam menos; sozinhas, sem horários ou valores, não tornam a página candidata.
    - Regex de horários (`08:00`) e valores monetários (`3.500,00`): uma página sem palavra-chave mas com muitos padrões (continuação de cartão de ponto) também entra.
 2. **Camada 2 — heurísticas:** sumário do PDF (`get_toc`), vizinhos ±1 com padrão numérico e densidade de texto. A detecção de tabelas do pdfplumber, a operação local mais cara, roda só nas 10 páginas mais bem pontuadas.
-3. **Camada 3 — Gemini:** no máximo 5 páginas candidatas, renderizadas como JPEG em escala de cinza (150 DPI) e enviadas em paralelo (uma chamada por página, timeout de 90 s, até 3 tentativas em 429/500/503). O modelo classifica a página (`CARTAO_PONTO`, `HOLERITE` ou `IRRELEVANTE`) e devolve JSON com confiança, página de origem e campos ausentes ou ambíguos.
+3. **Camada 3 — Gemini:** até 25 páginas candidatas, renderizadas como JPEG em escala de cinza (150 DPI) e enviadas em lotes de 5 páginas por chamada, com as chamadas (no máx. 5) em paralelo (timeout de 90 s, até 3 tentativas em 429/500/503). O modelo classifica a página (`CARTAO_PONTO`, `HOLERITE` ou `IRRELEVANTE`) e devolve JSON com confiança, página de origem e campos ausentes ou ambíguos.
 4. **Validação** contra o schema Pydantic, seguida da tela de revisão. A tela mostra pendências (páginas não classificadas, campos ausentes, conflitos) e destaca registros de baixa confiança.
 5. **Excel** gerado sob demanda no download (layout provisório `provisional-0.1`, que **não é** o modelo oficial do PJe-Calc) e apagado logo após o envio.
 
@@ -220,7 +220,7 @@ Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do clie
 - Não há login, cadastro nem histórico de extrações.
 - Nenhum dado extraído do PDF é persistido. O PostgreSQL recebe só metadados operacionais (timestamps, status, contagem de páginas, de candidatas e de chamadas ao Gemini, código de erro), sem nome de arquivo, texto, JSON, CPF ou número de processo.
 - O PDF é apagado ao fim do processamento; o Excel, logo após o download; a sessão em memória expira após `JOB_TTL_SECONDS`.
-- Apenas as páginas candidatas (até 5 por processo) são enviadas como imagem à API do Gemini; o restante do documento não sai do servidor.
+- Apenas as páginas candidatas (até 25 por processo) são enviadas como imagem à API do Gemini; o restante do documento não sai do servidor.
 - Os logs registram só metadados (`job_id`, contagens, duração), nunca conteúdo das páginas.
 - O navegador guarda apenas a preferência de tema (`localStorage`); nenhum dado do processo.
 - Em produção a comunicação deve ser HTTPS; o ambiente local usa HTTP.

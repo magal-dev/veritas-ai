@@ -50,9 +50,10 @@ TIME_PATTERN = re.compile(r"\b\d{1,2}:\d{2}\b")
 MONEY_PATTERN = re.compile(r"\b\d{1,3}(?:\.\d{3})*,\d{2}\b")
 MIN_PATTERN_HITS = 4
 
-MAX_CANDIDATE_PAGES = 5
+# 25 candidatas = 5 chamadas Gemini x 5 páginas por chamada (classifier.PAGES_PER_CALL).
+MAX_CANDIDATE_PAGES = 25
 # pdfplumber.extract_tables só roda nas páginas mais bem pontuadas.
-TABLE_CHECK_PAGES = MAX_CANDIDATE_PAGES * 2
+TABLE_CHECK_PAGES = 10
 
 
 @dataclass
@@ -131,15 +132,10 @@ def _score_page(signal: PageSignal) -> float:
 
 
 def _has_primary_signal(signal: PageSignal) -> bool:
-    # Só palavra fraca sem nenhum horário/valor (típico de petição) não tem o que extrair.
+    # Petições citam INSS/FGTS, um horário ou o valor da causa: palavra fraca sozinha não
+    # basta, a página precisa de densidade tabular (MIN_PATTERN_HITS) como cartão/holerite.
     has_strong = any(keyword in _STRONG_SET for keyword in signal.keyword_hits)
-    has_weak_with_pattern = bool(signal.keyword_hits) and signal.pattern_hits > 0
-    return (
-        has_strong
-        or has_weak_with_pattern
-        or signal.pattern_hits >= MIN_PATTERN_HITS
-        or signal.toc_match
-    )
+    return has_strong or signal.pattern_hits >= MIN_PATTERN_HITS or signal.toc_match
 
 
 def _rank(signals: list[PageSignal]) -> list[PageSignal]:
@@ -188,7 +184,9 @@ class LocalDocumentExtractor(DocumentExtractor):
                 neighbor_signal = signals_by_page.get(neighbor)
                 if neighbor_signal is None or _has_primary_signal(neighbor_signal):
                     continue
-                if neighbor_signal.pattern_hits > 0:
+                # Petição vizinha de um anexo cita INSS/FGTS e um ou dois números; um
+                # fim de cartão de ponto sem cabeçalho não tem palavra-chave.
+                if neighbor_signal.pattern_hits > 0 and not neighbor_signal.keyword_hits:
                     neighbor_pages.add(neighbor)
 
         ranked: list[PageSignal] = []
