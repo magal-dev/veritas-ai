@@ -91,7 +91,14 @@ Verbas são comparadas ignorando maiúsculas, acentos e espaços extras. Os regi
 
 ### Revisão editável (sessão)
 
-Depois da validação inicial, o perito pode corrigir `time_cards` e `payslips` na interface e enviar `PATCH /api/v1/jobs/{id}/extraction` com essas listas. O backend zera `conflicts` antes de revalidar: manter só uma versão por dia/verba remove o conflito; valores iguais viram duplicata e também removem o conflito. Salário-base conflitante deve ser unificado em todas as verbas da mesma competência. O download do Excel (`GET /excel`) responde `409` com `CONFLICTS_UNRESOLVED` enquanto restar qualquer conflito na sessão.
+Depois da validação inicial, o perito pode corrigir `time_cards` e `payslips` na interface e enviar `PATCH /api/v1/jobs/{id}/extraction` com essas listas. O resultado inteiro passa de novo pelo validador:
+
+- Conflitos entre páginas (os três formatos de `field` acima) são recalculados a partir das listas. Manter só uma versão por dia/verba remove o conflito; valores iguais viram duplicata e também removem o conflito. Salário-base conflitante é unificado em todas as verbas da mesma competência.
+- Conflitos devolvidos pelo Gemini não podem ser recalculados. A interface os reenvia em `conflicts` enquanto estiverem abertos; o perito os fecha com "Marcar como conferido".
+- Só as linhas editadas ficam com `confidence = 1` e perdem as pendências dos campos tocados (editar um horário limpa os quatro, porque pares e ordem da jornada dependem de todos). O validador volta a sinalizar o que continuar fora do formato ou incoerente. As demais linhas mantêm a confiança do Gemini.
+- `missing_fields` e `ambiguous_fields` do resultado são refeitos a partir dos registros; pendências só de página (sem registro) não sobrevivem ao salvamento.
+
+O download do Excel (`GET /excel`) responde `409` com `CONFLICTS_UNRESOLVED` enquanto restar qualquer conflito na sessão.
 
 ## O que este schema não é
 

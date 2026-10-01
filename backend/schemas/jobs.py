@@ -2,9 +2,9 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from schemas.extraction import ExtractionResult, PayslipEntry, TimeCardEntry
+from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
 
 
 class JobStatus(str, Enum):
@@ -45,3 +45,10 @@ class ExtractionUpdateRequest(BaseModel):
 
     time_cards: list[TimeCardEntry]
     payslips: list[PayslipEntry]
+    conflicts: list[Conflict] = Field(
+        default_factory=list,
+        description=(
+            "Conflitos que o validador não recalcula (vindos do Gemini) e que seguem abertos. "
+            "Os conflitos entre páginas são recalculados a partir das listas."
+        ),
+    )

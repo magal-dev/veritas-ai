@@ -124,7 +124,7 @@ async def update_job_extraction(
                 "message": "A sessão não possui JSON extraído.",
             },
         )
-    updated = service.update_extraction(job_id, body.time_cards, body.payslips)
+    updated = service.update_extraction(job_id, body.time_cards, body.payslips, body.conflicts)
     if updated is None:
         raise HTTPException(
             status_code=404,
@@ -133,12 +133,7 @@ async def update_job_extraction(
                 "message": "Sessão inexistente, expirada ou já descartada. Envie o PDF novamente.",
             },
         )
-    session = _require_session(service.get(job_id))
-    return JobPreviewResponse(
-        job_id=session.job_id,
-        status=session.status,
-        extraction=session.extraction,
-    )
+    return JobPreviewResponse(job_id=session.job_id, status=session.status, extraction=updated)
 
 
 @router.get("/{job_id}/excel")

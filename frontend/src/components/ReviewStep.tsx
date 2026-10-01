@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { CountUp } from '@/components/CountUp'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -10,8 +11,13 @@ import {
   applyBaseSalaryChoice,
   applyConflictKeepPage,
   conflictKey,
+  formatAmount,
   formatConflictValue,
+  markEdited,
+  parseAmount,
   parseConflictField,
+  withKeys,
+  withoutKeys,
 } from '@/lib/review-draft'
 import type { Conflict, ExtractionResult, ExtractionUpdateBody, PayslipEntry, TimeCardEntry } from '@/lib/types'
 
@@ -21,7 +27,37 @@ const INITIAL_RANGES = 12
 const INITIAL_CONFLICTS = 5
 
 const inputClass =
-  'w-full min-w-0 rounded-md border border-rule bg-paper px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent'
+  'w-full min-w-0 rounded-md border border-rule bg-paper px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent aria-invalid:border-danger aria-invalid:ring-danger'
+
+/** Texto livre enquanto digita; só valores no formato brasileiro chegam ao rascunho. */
+function AmountInput({
+  value,
+  label,
+  onCommit,
+}: {
+  value: number
+  label: string
+  onCommit: (amount: number) => void
+}) {
+  const [text, setText] = useState(() => formatAmount(value))
+  const invalid = parseAmount(text) === null
+  return (
+    <input
+      className={`${inputClass} text-right tabular-nums`}
+      inputMode="decimal"
+      value={text}
+      aria-label={label}
+      aria-invalid={invalid}
+      title={invalid ? 'Use o formato 1.234,56' : undefined}
+      onChange={(event) => {
+        setText(event.target.value)
+        const amount = parseAmount(event.target.value)
+        if (amount !== null) onCommit(amount)
+      }}
+      onBlur={() => setText(formatAmount(parseAmount(text) ?? value))}
+    />
+  )
+}
 
 type ReviewStepProps = {
   extraction: ExtractionResult
@@ -111,8 +147,8 @@ export function ReviewStep({
   onContinue,
   onDiscard,
 }: ReviewStepProps) {
-  const [timeCards, setTimeCards] = useState(extraction.time_cards)
-  const [payslips, setPayslips] = useState(extraction.payslips)
+  const [timeCards, setTimeCards] = useState(() => withKeys(extraction.time_cards, 't'))
+  const [payslips, setPayslips] = useState(() => withKeys(extraction.payslips, 'p'))
   const [openConflicts, setOpenConflicts] = useState(extraction.conflicts)
   const [dirty, setDirty] = useState(false)
 
@@ -141,13 +177,18 @@ export function ReviewStep({
     continueHint = 'Salve as correções antes de seguir para o Excel.'
   }
 
-  function patchTimeCard(index: number, patch: Partial<TimeCardEntry>) {
-    setTimeCards((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  function patchTimeCard(key: string, patch: Partial<TimeCardEntry>) {
+    setTimeCards((rows) => rows.map((row) => (row._key === key ? markEdited(row, patch) : row)))
     setDirty(true)
   }
 
-  function patchPayslip(index: number, patch: Partial<PayslipEntry>) {
-    setPayslips((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  function patchPayslip(key: string, patch: Partial<PayslipEntry>) {
+    setPayslips((rows) => rows.map((row) => (row._key === key ? markEdited(row, patch) : row)))
+    setDirty(true)
+  }
+
+  function handleAcknowledge(conflict: Conflict) {
+    setOpenConflicts((items) => items.filter((item) => conflictKey(item) !== conflictKey(conflict)))
     setDirty(true)
   }
 
@@ -168,7 +209,11 @@ export function ReviewStep({
   }
 
   async function handleSave() {
-    await onSave({ time_cards: timeCards, payslips })
+    await onSave({
+      time_cards: withoutKeys(timeCards),
+      payslips: withoutKeys(payslips),
+      conflicts: openConflicts.filter((conflict) => parseConflictField(conflict.field) === null),
+    })
   }
 
   return (
@@ -263,7 +308,6 @@ export function ReviewStep({
                 <ul className="space-y-3" aria-label="Conflitos entre páginas">
                   {visibleConflicts.map((conflict, index) => {
                     const parsed = parseConflictField(conflict.field)
-                    const isBaseSalary = parsed?.kind === 'base_salary'
                     return (
                       <li
                         key={`${conflict.field}-${index}`}
@@ -276,29 +320,40 @@ export function ReviewStep({
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {isBaseSalary
-                            ? conflict.values.map((value, valueIndex) => (
-                                <Button
-                                  key={valueIndex}
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => handleBaseSalary(conflict, Number(value))}
-                                >
-                                  Usar {formatConflictValue(value)}
-                                </Button>
-                              ))
-                            : conflict.source_pages.map((page) => (
-                                <Button
-                                  key={page}
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => handleKeepPage(conflict, page)}
-                                >
-                                  Manter p. {page}
-                                </Button>
-                              ))}
+                          {parsed?.kind === 'base_salary' &&
+                            conflict.values.map((value, valueIndex) => (
+                              <Button
+                                key={valueIndex}
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleBaseSalary(conflict, Number(value))}
+                              >
+                                Usar {formatConflictValue(value)}
+                              </Button>
+                            ))}
+                          {(parsed?.kind === 'time_card' || parsed?.kind === 'payslip') &&
+                            conflict.source_pages.map((page) => (
+                              <Button
+                                key={page}
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleKeepPage(conflict, page)}
+                              >
+                                Manter p. {page}
+                              </Button>
+                            ))}
+                          {parsed === null && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleAcknowledge(conflict)}
+                            >
+                              Marcar como conferido
+                            </Button>
+                          )}
                         </div>
                       </li>
                     )
@@ -347,7 +402,7 @@ export function ReviewStep({
               ) : (
                 timeCards.slice(0, timeCardRows).map((row, index) => (
                   <TableRow
-                    key={`${row.date}-${row.source_page}-${index}`}
+                    key={row._key}
                     className={`animate-rise ${attentionClass(row)}`}
                     title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, timeCardRows) }}
@@ -356,7 +411,7 @@ export function ReviewStep({
                       <input
                         className={inputClass}
                         value={row.date}
-                        onChange={(event) => patchTimeCard(index, { date: event.target.value })}
+                        onChange={(event) => patchTimeCard(row._key, { date: event.target.value })}
                         aria-label={`Data linha ${index + 1}`}
                       />
                     </TableCell>
@@ -365,7 +420,7 @@ export function ReviewStep({
                         className={inputClass}
                         value={row.clock_in ?? ''}
                         onChange={(event) =>
-                          patchTimeCard(index, { clock_in: event.target.value || null })
+                          patchTimeCard(row._key, { clock_in: event.target.value || null })
                         }
                         aria-label={`Entrada linha ${index + 1}`}
                       />
@@ -375,7 +430,7 @@ export function ReviewStep({
                         className={inputClass}
                         value={row.clock_out ?? ''}
                         onChange={(event) =>
-                          patchTimeCard(index, { clock_out: event.target.value || null })
+                          patchTimeCard(row._key, { clock_out: event.target.value || null })
                         }
                         aria-label={`Saída linha ${index + 1}`}
                       />
@@ -386,7 +441,7 @@ export function ReviewStep({
                         value={row.break_start ?? ''}
                         placeholder="início"
                         onChange={(event) =>
-                          patchTimeCard(index, { break_start: event.target.value || null })
+                          patchTimeCard(row._key, { break_start: event.target.value || null })
                         }
                         aria-label={`Início intervalo linha ${index + 1}`}
                       />
@@ -395,7 +450,7 @@ export function ReviewStep({
                         value={row.break_end ?? ''}
                         placeholder="fim"
                         onChange={(event) =>
-                          patchTimeCard(index, { break_end: event.target.value || null })
+                          patchTimeCard(row._key, { break_end: event.target.value || null })
                         }
                         aria-label={`Fim intervalo linha ${index + 1}`}
                       />
@@ -441,7 +496,7 @@ export function ReviewStep({
               ) : (
                 payslips.slice(0, payslipRows).map((row, index) => (
                   <TableRow
-                    key={`${row.competence}-${row.item_name}-${row.source_page}-${index}`}
+                    key={row._key}
                     className={`animate-rise ${attentionClass(row)}`}
                     title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, payslipRows) }}
@@ -450,7 +505,7 @@ export function ReviewStep({
                       <input
                         className={inputClass}
                         value={row.competence}
-                        onChange={(event) => patchPayslip(index, { competence: event.target.value })}
+                        onChange={(event) => patchPayslip(row._key, { competence: event.target.value })}
                         aria-label={`Competência linha ${index + 1}`}
                       />
                     </TableCell>
@@ -458,22 +513,15 @@ export function ReviewStep({
                       <input
                         className={inputClass}
                         value={row.item_name}
-                        onChange={(event) => patchPayslip(index, { item_name: event.target.value })}
+                        onChange={(event) => patchPayslip(row._key, { item_name: event.target.value })}
                         aria-label={`Verba linha ${index + 1}`}
                       />
                     </TableCell>
                     <TableCell>
-                      <input
-                        className={inputClass}
-                        inputMode="decimal"
-                        value={String(row.amount)}
-                        onChange={(event) => {
-                          const parsed = Number.parseFloat(event.target.value.replace(',', '.'))
-                          if (!Number.isNaN(parsed)) {
-                            patchPayslip(index, { amount: parsed })
-                          }
-                        }}
-                        aria-label={`Valor linha ${index + 1}`}
+                      <AmountInput
+                        value={row.amount}
+                        label={`Valor linha ${index + 1}`}
+                        onCommit={(amount) => patchPayslip(row._key, { amount })}
                       />
                     </TableCell>
                     <TableCell>{row.source_page}</TableCell>
@@ -492,11 +540,7 @@ export function ReviewStep({
         </CardContent>
       </Card>
 
-      {saveError && (
-        <p className="text-sm text-destructive" role="alert">
-          {saveError}
-        </p>
-      )}
+      {saveError && <Alert>{saveError}</Alert>}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="ghost" onClick={onDiscard} disabled={saving}>

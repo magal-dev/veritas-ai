@@ -9,7 +9,7 @@ import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
 import { Badge } from '@/components/ui/badge'
 import { createJob, discardJob, downloadExcel, getPreview, updateExtraction } from '@/lib/api'
-import type { ApiError, ExtractionResult } from '@/lib/types'
+import type { ApiError, ExtractionResult, ExtractionUpdateBody } from '@/lib/types'
 
 type SessionState = {
   jobId: string
@@ -59,7 +59,7 @@ export default function App() {
     setReviewRevision(0)
   }, [])
 
-  async function handleSaveReview(body: { time_cards: ExtractionResult['time_cards']; payslips: ExtractionResult['payslips'] }) {
+  async function handleSaveReview(body: ExtractionUpdateBody) {
     if (!session.jobId) return
     setReviewSaving(true)
     setReviewSaveError(null)

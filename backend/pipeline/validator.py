@@ -25,6 +25,10 @@ _ISO_DATE_RE = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
 _BR_DATE_RE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 _ISO_COMPETENCE_RE = re.compile(r"(\d{4})-(\d{1,2})")
 _BR_COMPETENCE_RE = re.compile(r"(\d{1,2})/(\d{4})")
+# Formatos de `Conflict.field` gerados por este módulo (ver _describe_* e _base_salary_conflicts).
+_DERIVED_CONFLICT_RE = re.compile(
+    r"time_cards\[[^\]]+\]|payslips\[[^|\]]+\|.+\]|payslips\[[^\]]+\]\.base_salary"
+)
 
 Entry = TypeVar("Entry", TimeCardEntry, PayslipEntry)
 
@@ -64,6 +68,11 @@ def normalize_competence(value: str) -> str | None:
     if not 1 <= month <= 12:
         return None
     return f"{year:04d}-{month:02d}"
+
+
+def is_derived_conflict(conflict: Conflict) -> bool:
+    """Conflito que o validador recalcula a partir dos registros (os do Gemini não são)."""
+    return _DERIVED_CONFLICT_RE.fullmatch(conflict.field) is not None
 
 
 def _minutes(value: str) -> int:

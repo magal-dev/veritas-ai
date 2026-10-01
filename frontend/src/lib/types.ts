@@ -36,6 +36,8 @@ export type PayslipEntry = {
 export type ExtractionUpdateBody = {
   time_cards: TimeCardEntry[]
   payslips: PayslipEntry[]
+  /** Conflitos do Gemini ainda abertos; os entre páginas o backend recalcula. */
+  conflicts: Conflict[]
 }
 
 export type Conflict = {

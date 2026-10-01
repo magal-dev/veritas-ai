@@ -17,9 +17,9 @@ from models.processing_run import RunStatus
 from pipeline.classifier import build_classifier
 from pipeline.excel_builder import ProvisionalExcelBuilder
 from pipeline.extractor import LocalDocumentExtractor
-from pipeline.validator import SchemaExtractionValidator
+from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
-from schemas.extraction import ExtractionResult, PayslipEntry, TimeCardEntry
+from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
 from schemas.jobs import JobStatus
 from services.session_store import JobSession, session_store
 
@@ -139,24 +139,19 @@ class JobService:
         job_id: uuid.UUID,
         time_cards: list[TimeCardEntry],
         payslips: list[PayslipEntry],
+        open_conflicts: list[Conflict],
     ) -> ExtractionResult | None:
         session = session_store.get(job_id)
         if session is None or session.extraction is None:
             return None
 
-        reviewed_cards = [
-            entry.model_copy(update={"confidence": 1.0, "missing_fields": [], "ambiguous_fields": []})
-            for entry in time_cards
-        ]
-        reviewed_slips = [
-            entry.model_copy(update={"confidence": 1.0, "missing_fields": [], "ambiguous_fields": []})
-            for entry in payslips
-        ]
+        # O validador soma `conflicts` aos que recalcula; se os antigos fossem mantidos,
+        # nenhuma resolução da revisão teria efeito.
         draft = session.extraction.model_copy(
             update={
-                "time_cards": reviewed_cards,
-                "payslips": reviewed_slips,
-                "conflicts": [],
+                "time_cards": time_cards,
+                "payslips": payslips,
+                "conflicts": [item for item in open_conflicts if not is_derived_conflict(item)],
                 "missing_fields": [],
                 "ambiguous_fields": [],
             }
