@@ -81,7 +81,7 @@ PDF bruto
   → descarte imediato
 ```
 
-O pipeline **roda** com triagem local e Gemini nas páginas candidatas (máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. PDFs escaneados sem texto extraível retornam extração vazia.
+O pipeline **roda** com triagem local e Gemini nas páginas candidatas (até 25 páginas, em lotes de 5 por chamada, máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. PDFs escaneados sem texto extraível retornam extração vazia.
 
 ## 5. Privacidade (Privacy by Design)
 
@@ -117,9 +117,9 @@ fracas: entrada, saída, INSS, FGTS   (aparecem também em petições)
 
 E contar padrões tabulares por regex: horários (`08:00`) e valores monetários (`3.500,00`). Página só com palavra fraca e sem nenhum padrão numérico não é candidata; página sem palavra-chave mas com muitos padrões (continuação de cartão de ponto) é.
 
-**Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), vizinhos ±1 com padrão numérico, densidade de texto. A detecção de tabelas do pdfplumber (`extract_tables`, cara) roda só na shortlist (top 10), para confirmar e reordenar.
+**Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), vizinhos ±1 com padrão numérico, densidade de texto. Página só com palavra fraca precisa de 4+ padrões numéricos. A detecção de tabelas do pdfplumber (`extract_tables`, cara) roda só na shortlist (top 10), para confirmar e reordenar.
 
-**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (uma por candidata, timeout de 90 s e até 3 tentativas em 429/5xx), então a latência é a da chamada mais lenta, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
+**Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (lotes de até 5 páginas por chamada, máx. 5 chamadas = 25 candidatas; timeout de 90 s e até 3 tentativas em 429/5xx). O lote dilui o custo fixo da instrução e a latência é a do lote mais lento, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
 
 Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`.
 
