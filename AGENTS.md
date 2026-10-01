@@ -81,7 +81,7 @@ PDF bruto
   → descarte imediato
 ```
 
-O pipeline **roda** com triagem local e Gemini nas páginas candidatas (até 25 páginas, em lotes de 5 por chamada, máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. PDFs escaneados sem texto extraível retornam extração vazia.
+O pipeline **roda** com triagem local e Gemini nas páginas candidatas (até 25 páginas, em lotes de 5 por chamada, máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. Páginas escaneadas (sem texto extraível) são pontuadas localmente por sinais visuais e ocupam só as vagas que sobrarem depois das candidatas de texto.
 
 ## 5. Privacidade (Privacy by Design)
 
@@ -121,6 +121,8 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 
 **Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (lotes de até 5 páginas por chamada, máx. 5 chamadas = 25 candidatas; timeout de 90 s e até 3 tentativas em 429/5xx). O lote dilui o custo fixo da instrução e a latência é a do lote mais lento, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
 
+**Trilha visual (PDF escaneado):** página com até 200 caracteres não brancos de texto extraível e alguma imagem embutida, ou com imagem cobrindo ≥ 85% da página e sem sinal de texto, é página visual. Ela é pontuada sem API por um pixmap cinza de 72 DPI: proporção de tinta, faixas de linhas com tinta e traços horizontais. Página em branco ou carimbo isolado não entra. Vizinho ±1 só entra se também for página visual (continuação de cartão escaneado). `extract_tables` nunca roda em página só imagem. Candidatas de texto têm prioridade; as visuais ocupam as vagas restantes até 25, e o Gemini faz o OCR delas na camada 3. Uma petição escaneada pode ocupar uma vaga restante e é classificada como `IRRELEVANTE`.
+
 Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`.
 
 As camadas 1–3 estão implementadas. `classifier.py` não deve ser chamado para o PDF inteiro. Sem `GEMINI_API_KEY`, o stub marca candidatas como não classificadas.
@@ -152,7 +154,7 @@ TODO (trabalho futuro):
 - [x] Camada 1: PyMuPDF + palavras-chave + padrões tabulares
 - [x] Camada 2: TOC, posição, densidade
 - [x] Camada 3: Gemini (padrão `gemini-3.5-flash-lite`, via `GEMINI_MODEL`) só nas candidatas
-- [ ] Tratamento de PDF nativo vs. escaneado
+- [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
 - [ ] Revisão humana editável (hoje a tabela é somente leitura / vazia)
 - [ ] Layout oficial PJe-Calc
 - [ ] HTTPS / deploy
