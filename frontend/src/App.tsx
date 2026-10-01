@@ -1,15 +1,17 @@
 import { ShieldCheck } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
+import { BrandBar } from '@/components/BrandBar'
 import { DownloadStep } from '@/components/DownloadStep'
+import { HomeScreen } from '@/components/HomeScreen'
 import { ProcessingStep } from '@/components/ProcessingStep'
 import { ReviewStep } from '@/components/ReviewStep'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
-import { Badge } from '@/components/ui/badge'
 import { createJob, discardJob, downloadExcel, getPreview, updateExtraction } from '@/lib/api'
 import type { ApiError, ExtractionResult, ExtractionUpdateBody } from '@/lib/types'
+
+type View = 'home' | 'flow'
 
 type SessionState = {
   jobId: string
@@ -39,6 +41,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function App() {
+  const [view, setView] = useState<View>('home')
   const [step, setStep] = useState<FlowStep>('upload')
   const [session, setSession] = useState<SessionState>(emptySession)
   const [busy, setBusy] = useState(false)
@@ -58,6 +61,11 @@ export default function App() {
     setReviewSaving(false)
     setReviewRevision(0)
   }, [])
+
+  function goTo(next: View) {
+    setView(next)
+    window.scrollTo({ top: 0 })
+  }
 
   async function handleSaveReview(body: ExtractionUpdateBody) {
     if (!session.jobId) return
@@ -139,74 +147,70 @@ export default function App() {
     }
   }
 
+  // Só volta à apresentação sem sessão aberta, para não abandonar dados em memória.
+  const canLeaveFlow = !busy && !session.jobId
+
   return (
     <div className="min-h-svh">
-      <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-1/4 -top-1/2 h-[140%] w-3/4 animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(236,231,211,0.10),transparent)]"
-        />
-        <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-8 pt-5 sm:px-8 sm:pb-9 sm:pt-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img src="/logo-light.png" alt="" className="h-9 w-9 animate-pop object-contain" />
-              <span className="font-display text-2xl tracking-[0.04em] animate-fade [animation-delay:200ms]">
-                Veritas AI
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge className="animate-fade border-offwhite/30 text-offwhite/80 [animation-delay:400ms]">
-                Fundação 0.1
-              </Badge>
-              <ThemeToggle />
-            </div>
-          </div>
-          <h1 className="font-display text-[34px] leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
-            {TITLE.map((word, index) => (
-              <span key={word.text} aria-hidden className="inline-block overflow-hidden pb-1 align-bottom">
-                <span
-                  className={`inline-block animate-reveal ${word.italic ? 'italic text-offwhite/80' : ''}`}
-                  style={{ animationDelay: `${250 + index * 90}ms` }}
-                >
-                  {word.text}
-                  {'\u00A0'}
-                </span>
-              </span>
-            ))}
-          </h1>
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:gap-12 sm:px-8 sm:py-14">
-        <Stepper current={step} />
-
-        <div key={step} className="animate-rise">
-          {step === 'upload' && (
-            <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
-          )}
-          {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
-          {step === 'review' && session.extraction && (
-            <ReviewStep
-              key={`${session.jobId}-${reviewRevision}`}
-              extraction={session.extraction}
-              saving={reviewSaving}
-              saveError={reviewSaveError}
-              onSave={handleSaveReview}
-              onContinue={() => setStep('download')}
-              onDiscard={() => void handleDiscard()}
+      {view === 'home' ? (
+        <HomeScreen onStart={() => goTo('flow')} />
+      ) : (
+        <>
+          <header className="grain grain-dark relative overflow-hidden bg-burgundy text-offwhite">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-1/4 -top-1/2 h-[140%] w-3/4 animate-drift rounded-full bg-[radial-gradient(closest-side,rgba(236,231,211,0.10),transparent)]"
             />
-          )}
-          {step === 'download' && (
-            <DownloadStep
-              busy={busy}
-              discarded={discarded}
-              error={error}
-              onDownload={() => void handleDownload()}
-              onRestart={reset}
-            />
-          )}
-        </div>
-      </main>
+            <div className="relative mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-8 pt-5 sm:px-8 sm:pb-9 sm:pt-6">
+              <BrandBar onHome={canLeaveFlow ? () => goTo('home') : undefined} />
+              <h1 className="font-display text-[34px] leading-[1.05] tracking-[-0.02em] sm:text-5xl" aria-label="Extração inteligente de dados processuais">
+                {TITLE.map((word, index) => (
+                  <span key={word.text} aria-hidden className="inline-block overflow-hidden pb-1 align-bottom">
+                    <span
+                      className={`inline-block animate-reveal ${word.italic ? 'italic text-offwhite/80' : ''}`}
+                      style={{ animationDelay: `${250 + index * 90}ms` }}
+                    >
+                      {word.text}
+                      {'\u00A0'}
+                    </span>
+                  </span>
+                ))}
+              </h1>
+            </div>
+          </header>
+
+          <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:gap-12 sm:px-8 sm:py-14">
+            <Stepper current={step} />
+
+            <div key={step} className="animate-rise">
+              {step === 'upload' && (
+                <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
+              )}
+              {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
+              {step === 'review' && session.extraction && (
+                <ReviewStep
+                  key={`${session.jobId}-${reviewRevision}`}
+                  extraction={session.extraction}
+                  saving={reviewSaving}
+                  saveError={reviewSaveError}
+                  onSave={handleSaveReview}
+                  onContinue={() => setStep('download')}
+                  onDiscard={() => void handleDiscard()}
+                />
+              )}
+              {step === 'download' && (
+                <DownloadStep
+                  busy={busy}
+                  discarded={discarded}
+                  error={error}
+                  onDownload={() => void handleDownload()}
+                  onRestart={reset}
+                />
+              )}
+            </div>
+          </main>
+        </>
+      )}
 
       <footer className="border-t border-rule">
         <div className="mx-auto flex max-w-5xl items-start gap-4 px-4 py-6 sm:px-8 sm:py-8">

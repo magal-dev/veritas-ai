@@ -69,7 +69,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 | Rota ou resposta da API | `api/jobs.py`, `schemas/jobs.py`, `services/job_service.py`, `frontend/src/lib/api.ts`, `tests/test_jobs_api.py` |
 | Nova variável de ambiente | `core/config.py` + `.env.example` |
 | Metadado operacional no banco | `models/processing_run.py`, nova migration em `alembic/versions/`, `repositories/processing_run_repository.py` (nunca conteúdo processual) |
-| Telas | `frontend/src/components/*Step.tsx`, `frontend/src/App.tsx`; primitivos shadcn em `frontend/src/components/ui/` |
+| Telas | `frontend/src/components/*Step.tsx`, `frontend/src/components/HomeScreen.tsx` (apresentação), `frontend/src/App.tsx`; primitivos shadcn em `frontend/src/components/ui/` |
 
 ## Testes
 
