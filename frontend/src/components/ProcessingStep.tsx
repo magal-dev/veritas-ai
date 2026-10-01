@@ -21,12 +21,6 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
   const elapsed = useElapsed()
   return (
     <Card className="relative overflow-hidden">
-      <span
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[max(160%,40rem)] -translate-x-1/2 -translate-y-1/2"
-      >
-        <span className="block h-full w-full animate-breathe rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-accent)_22%,transparent),color-mix(in_srgb,var(--color-accent)_8%,transparent)_55%,transparent)]" />
-      </span>
       <CardHeader className="relative">
         <CardTitle>Processando na sessão</CardTitle>
         <CardDescription>
@@ -36,7 +30,11 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
       </CardHeader>
       <CardContent className="relative flex flex-col items-center gap-5 py-8" role="status" aria-live="polite">
         <span className="relative flex h-24 w-24 items-center justify-center">
-          <img src="/logo.png" alt="" className="h-14 w-14 animate-breathe-logo rounded-full object-contain" />
+          <span aria-hidden className="absolute inset-2 animate-halo rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-accent)_18%,transparent),transparent)]" />
+          <span aria-hidden className="absolute inset-4 animate-ripple rounded-full border border-accent/40" />
+          <span aria-hidden className="absolute inset-4 animate-ripple rounded-full border border-accent/40 [animation-delay:1.2s]" />
+          <span aria-hidden className="absolute inset-4 animate-ripple rounded-full border border-accent/40 [animation-delay:2.4s]" />
+          <img src="/logo.png" alt="" className="relative h-14 w-14 animate-breathe-logo rounded-full object-contain" />
         </span>
         <p className="relative text-center text-sm text-ink-muted">
           <span className="eyebrow mr-2">Lendo</span>
