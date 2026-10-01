@@ -82,6 +82,10 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 - Logs: formato `evento.acao chave=valor` só com metadados (`job_id`, contagens, duração). Nunca texto de página, `source_excerpt`, nomes, CPF ou nome de arquivo.
 - Não adicione dependências fora da stack do `AGENTS.md` sem justificar.
 
+## CI
+
+`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` (Python 3.11 e 3.13), ida e volta das migrations em Postgres de serviço, e lint + build do frontend. Não há deploy (HTTPS/deploy é TODO). Dependabot semanal para pip e npm.
+
 ## Antes de concluir uma tarefa
 
 1. `pytest` verde em `backend/`.
