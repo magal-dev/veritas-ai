@@ -234,7 +234,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
           <div className="flex flex-col gap-8">
             <Reveal>
               <p className="font-display text-[30px] leading-[1.12] tracking-[-0.01em] sm:text-[42px]">
-                Um processo tem centenas de páginas. O cálculo depende de poucas —{' '}
+                Um processo tem centenas de páginas. O cálculo depende de poucas,{' '}
                 <span className="italic text-accent">e de cada horário, cada rubrica,</span>{' '}
                 transcritos sem erro.
               </p>
@@ -290,7 +290,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
                   <p className="max-w-md text-[15px] leading-relaxed text-ink-muted">
                     Processos trabalhistas carregam CPF, salários e jornadas. Por isso a
                     privacidade aqui é decisão de arquitetura: o dado só existe enquanto
-                    é útil, em memória, e desaparece com a sessão — em linha com a
+                    é útil, em memória, e desaparece com a sessão, em linha com a
                     minimização e a necessidade da LGPD (Lei 13.709/2018).
                   </p>
                 </div>
@@ -317,7 +317,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             <p className="max-w-2xl text-[15px] leading-relaxed text-ink-muted">
               <span className="text-ink">Nenhuma extração é perfeita.</span> Cada registro traz
               confiança, página de origem e trecho fonte, e campos ausentes ou ambíguos são
-              marcados — nunca inventados. A planilha segue o layout{' '}
+              marcados, nunca inventados. A planilha segue o layout{' '}
               <code className="text-ink">provisional-0.1</code>, uma hipótese de trabalho, e não o
               modelo oficial do PJe-Calc.
             </p>
@@ -329,7 +329,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             <div className="flex flex-col gap-3">
               <h2 id="comecar" className="font-display text-[34px] leading-[1.05] tracking-[-0.01em] sm:text-5xl">
                 Envie o PDF. <span className="italic text-accent">O resto acontece aqui</span>
-                <br className="hidden sm:block" /> — e termina com a sessão.
+                <br className="hidden sm:block" /> e termina com a sessão.
               </h2>
             </div>
             <Button type="button" size="lg" className="group/btn w-full shrink-0 sm:w-auto" onClick={onStart}>
