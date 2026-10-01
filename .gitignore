@@ -35,3 +35,7 @@ tmp/
 .coverage
 coverage.xml
 pytest-report.xml
+
+# Avaliação com processos reais (dados pessoais; nunca commitar)
+avaliacao-local/
+*.gabarito.json

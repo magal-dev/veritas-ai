@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 from google.genai import errors, types
 from PIL import Image, ImageEnhance, ImageFilter
 

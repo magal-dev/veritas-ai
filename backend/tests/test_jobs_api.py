@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from uuid import uuid4
 
-import fitz
+import pymupdf as fitz
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 

@@ -1,7 +1,7 @@
 import io
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, ImageEnhance, ImageFilter
 
 from pipeline.extractor import (

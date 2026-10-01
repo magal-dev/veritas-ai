@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 
 OUTPUT = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "processo_exemplo.pdf"
 
