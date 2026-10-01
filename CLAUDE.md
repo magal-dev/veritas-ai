@@ -62,6 +62,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 | Novo campo extraído | `docs/SCHEMA_EXTRACAO.md`, `schemas/extraction.py`, prompt em `pipeline/classifier.py`, `pipeline/validator.py`, `pipeline/excel_builder.py` + `docs/PJE_CALC_LAYOUT.md`, `frontend/src/lib/types.ts`, testes |
 | Palavras-chave, TOC, densidade | `pipeline/extractor.py`, `tests/test_extractor.py` |
 | Prompt, parsing ou limite de chamadas do Gemini | `pipeline/classifier.py`, `tests/test_classifier.py` |
+| Regras de validação, duplicatas e conflitos | `pipeline/validator.py`, `tests/test_validator.py`, seção "Validação" de `docs/SCHEMA_EXTRACAO.md` |
 | Colunas/abas do Excel | `pipeline/excel_builder.py` + `docs/PJE_CALC_LAYOUT.md` juntos, `tests/test_excel_builder.py` |
 | Rota ou resposta da API | `api/jobs.py`, `schemas/jobs.py`, `services/job_service.py`, `frontend/src/lib/api.ts`, `tests/test_jobs_api.py` |
 | Nova variável de ambiente | `core/config.py` + `.env.example` |

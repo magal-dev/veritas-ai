@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  ExtractionUpdateBody,
   JobCreated,
   JobPreviewResponse,
   JobStatusResponse,
@@ -43,6 +44,21 @@ export async function getJob(jobId: string): Promise<JobStatusResponse> {
 
 export async function getPreview(jobId: string): Promise<JobPreviewResponse> {
   const response = await fetch(`/api/v1/jobs/${jobId}/preview`)
+  if (!response.ok) {
+    throw await parseError(response)
+  }
+  return (await response.json()) as JobPreviewResponse
+}
+
+export async function updateExtraction(
+  jobId: string,
+  body: ExtractionUpdateBody,
+): Promise<JobPreviewResponse> {
+  const response = await fetch(`/api/v1/jobs/${jobId}/extraction`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!response.ok) {
     throw await parseError(response)
   }

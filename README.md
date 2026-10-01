@@ -4,7 +4,7 @@ Extração inteligente de dados processuais para o PJe-Calc — projeto de Traba
 
 Aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha para importação no PJe-Calc.
 
-**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão dos dados extraídos na interface e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais e o Gemini faz o OCR só nas candidatas. Revisão editável e o layout oficial do PJe-Calc permanecem como trabalho futuro.
+**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão editável dos dados extraídos (correções e resolução de conflitos antes do Excel) e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais e o Gemini faz o OCR só nas candidatas. O layout oficial do PJe-Calc permanece como trabalho futuro.
 
 Leia [AGENTS.md](AGENTS.md) antes de implementar (o [CLAUDE.md](CLAUDE.md) traz o guia operacional para agentes). Contratos: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md) e [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md).
 
@@ -20,8 +20,9 @@ Fluxo de uma requisição: **upload → triagem → extração → validação �
    - Regex de horários (`08:00`) e valores monetários (`3.500,00`): uma página sem palavra-chave mas com muitos padrões (continuação de cartão de ponto) também entra.
 2. **Camada 2 — heurísticas:** sumário do PDF (`get_toc`), vizinhos ±1 com padrão numérico e densidade de texto. A detecção de tabelas do pdfplumber, a operação local mais cara, roda só nas 10 páginas mais bem pontuadas.
 3. **Camada 3 — Gemini:** até 25 páginas candidatas, renderizadas como JPEG em escala de cinza (150 DPI) e enviadas em lotes de 5 páginas por chamada, com as chamadas (no máx. 5) em paralelo (timeout de 90 s, até 3 tentativas em 429/500/503). O modelo classifica a página (`CARTAO_PONTO`, `HOLERITE` ou `IRRELEVANTE`) e devolve JSON com confiança, página de origem e campos ausentes ou ambíguos.
-4. **Validação** contra o schema Pydantic, seguida da tela de revisão. A tela mostra pendências (páginas não classificadas, campos ausentes, conflitos) e destaca registros de baixa confiança.
-5. **Excel** gerado sob demanda no download (layout provisório `provisional-0.1`, que **não é** o modelo oficial do PJe-Calc) e apagado logo após o envio.
+4. **Validação** contra o schema Pydantic e regras de formato e coerência. Horários e datas são normalizados quando a leitura é inequívoca (`8h00` → `08:00`). Valores inválidos, pares incompletos e intervalos fora da jornada são sinalizados, e duplicatas entre páginas são removidas. Valores divergentes entre páginas viram conflito para a revisão decidir: o sistema não escolhe nem inventa valor. As regras completas estão em [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md#validação-pipelinevalidatorpy).
+5. **Revisão:** a tela mostra as pendências (páginas não classificadas, campos ausentes ou a conferir, conflitos com as páginas de origem) e destaca registros de baixa confiança ou sinalizados.
+6. **Excel** gerado sob demanda no download (layout provisório `provisional-0.1`, que **não é** o modelo oficial do PJe-Calc) e apagado logo após o envio.
 
 Em um PDF sintético de 300 páginas, a triagem local (camadas 1 e 2) leva cerca de 0,2 s. Para medir na sua máquina, use `python scripts/benchmark_pipeline.py 300`.
 
@@ -36,7 +37,7 @@ Fluxo em 4 etapas (upload, processamento, revisão e download), todo em portugu�
 - **Sem `GEMINI_API_KEY`:** a triagem local roda, mas as candidatas ficam como "não classificadas" e nenhum dado é extraído.
 - **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as envia ao Gemini só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
 - Candidatas além das 5 primeiras não vão ao Gemini; aparecem como pendência na revisão.
-- A tabela de revisão é somente leitura.
+- A revisão permite editar cartões e holerites e salvar na sessão; o Excel só é liberado sem conflitos pendentes.
 
 ## Estrutura do repositório
 
@@ -110,7 +111,7 @@ veritas-ai/
 │   ├── pipeline/          # Estágios do processamento
 │   │   ├── extractor.py   # Camadas 1–2: PyMuPDF + heurísticas (pdfplumber na shortlist)
 │   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração em paralelo
-│   │   ├── validator.py   # Validação do JSON contra regras de negócio
+│   │   ├── validator.py   # Formatos, coerência da jornada, duplicatas e conflitos
 │   │   └── excel_builder.py # Geração do .xlsx (openpyxl)
 │   ├── schemas/           # Contratos Pydantic (API + extração)
 │   ├── models/            # Entidades SQLAlchemy (só metadados, sem conteúdo processual)
@@ -118,7 +119,7 @@ veritas-ai/
 │   ├── core/              # Config, database async, logging
 │   ├── alembic/           # Migrations do banco
 │   ├── scripts/           # Smoke test, benchmark da triagem e comparação de modelos
-│   └── tests/             # Testes do extractor, classifier, Excel e API
+│   └── tests/             # Testes do extractor, classifier, validator, Excel e API
 │
 └── frontend/              # Interface web (React + Vite + TypeScript + Tailwind + shadcn/ui)
     ├── src/
@@ -189,7 +190,8 @@ Prefixo `/api/v1`.
 | POST | `/api/v1/jobs` | Envia o PDF e processa (o arquivo existe só em tempfile durante a requisição) |
 | GET | `/api/v1/jobs/{id}` | Status e metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, mantido em memória |
-| GET | `/api/v1/jobs/{id}/excel` | Download do `.xlsx`, apagado após o envio |
+| PATCH | `/api/v1/jobs/{id}/extraction` | Salva correções da revisão e revalida (memória) |
+| GET | `/api/v1/jobs/{id}/excel` | Download do `.xlsx` (409 se houver conflitos) |
 | DELETE | `/api/v1/jobs/{id}` | Descarta a sessão |
 | GET | `/health` | Verificação de saúde |
 

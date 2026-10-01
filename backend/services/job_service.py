@@ -17,9 +17,9 @@ from models.processing_run import RunStatus
 from pipeline.classifier import build_classifier
 from pipeline.excel_builder import ProvisionalExcelBuilder
 from pipeline.extractor import LocalDocumentExtractor
-from pipeline.validator import SchemaExtractionValidator
+from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
-from schemas.extraction import ExtractionResult
+from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
 from schemas.jobs import JobStatus
 from services.session_store import JobSession, session_store
 
@@ -133,6 +133,40 @@ class JobService:
 
     def get(self, job_id: uuid.UUID) -> JobSession | None:
         return session_store.get(job_id)
+
+    def update_extraction(
+        self,
+        job_id: uuid.UUID,
+        time_cards: list[TimeCardEntry],
+        payslips: list[PayslipEntry],
+        open_conflicts: list[Conflict],
+    ) -> ExtractionResult | None:
+        session = session_store.get(job_id)
+        if session is None or session.extraction is None:
+            return None
+
+        # O validador soma `conflicts` aos que recalcula; se os antigos fossem mantidos,
+        # nenhuma resolução da revisão teria efeito.
+        draft = session.extraction.model_copy(
+            update={
+                "time_cards": time_cards,
+                "payslips": payslips,
+                "conflicts": [item for item in open_conflicts if not is_derived_conflict(item)],
+                "missing_fields": [],
+                "ambiguous_fields": [],
+            }
+        )
+        validated = self._validator.validate(draft)
+        session.extraction = validated
+        session_store.put(session)
+        logger.info(
+            "job.extraction_updated job_id=%s time_cards=%s payslips=%s conflicts=%s",
+            job_id,
+            len(validated.time_cards),
+            len(validated.payslips),
+            len(validated.conflicts),
+        )
+        return validated
 
     def build_excel(self, session: JobSession) -> bytes:
         if session.extraction is None:

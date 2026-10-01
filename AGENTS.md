@@ -144,9 +144,10 @@ Já existe:
 - Store in-memory com TTL
 - Triagem em 3 camadas (PyMuPDF + heurísticas + Gemini em paralelo)
 - Stubs tipados para testes e fallback sem API key
+- Validador com regras de formato, coerência da jornada, duplicatas e conflitos entre páginas (sem regras jurídicas; ver `docs/SCHEMA_EXTRACAO.md`)
 - `excel_builder` com abas provisórias
 - `ProcessingRun` + Alembic
-- UI: upload, processamento, revisão (empty state), download, erros
+- UI: upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
 - Descarte de PDF/Excel/sessão
 
 TODO (trabalho futuro):
@@ -155,7 +156,7 @@ TODO (trabalho futuro):
 - [x] Camada 2: TOC, posição, densidade
 - [x] Camada 3: Gemini (padrão `gemini-3.5-flash-lite`, via `GEMINI_MODEL`) só nas candidatas
 - [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
-- [ ] Revisão humana editável (hoje a tabela é somente leitura / vazia)
+- [x] Revisão humana editável (tabelas + `PATCH /extraction`; Excel bloqueado com conflitos abertos)
 - [ ] Layout oficial PJe-Calc
 - [ ] HTTPS / deploy
 - [ ] Autenticação e histórico (fora de escopo; só como trabalho futuro acadêmico)
@@ -236,6 +237,7 @@ Rotas da API: prefixo `/api/v1`.
 | POST | `/api/v1/jobs` | PDF só em tempfile |
 | GET | `/api/v1/jobs/{id}` | metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, memória |
-| GET | `/api/v1/jobs/{id}/excel` | xlsx temporário + descarte |
+| PATCH | `/api/v1/jobs/{id}/extraction` | revisão editável, revalida em memória |
+| GET | `/api/v1/jobs/{id}/excel` | xlsx temporário + descarte (409 se houver conflitos) |
 | DELETE | `/api/v1/jobs/{id}` | zera a sessão |
 | GET | `/health` | público |

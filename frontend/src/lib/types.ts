@@ -14,6 +14,7 @@ export type TimeCardEntry = {
   break_start: string | null
   break_end: string | null
   source_page: number
+  source_excerpt?: string | null
   confidence: number
   missing_fields: string[]
   ambiguous_fields: string[]
@@ -23,10 +24,27 @@ export type PayslipEntry = {
   competence: string
   item_name: string
   amount: number
+  base_salary?: number | null
+  overtime_paid_hours?: number | null
   source_page: number
+  source_excerpt?: string | null
   confidence: number
   missing_fields: string[]
   ambiguous_fields: string[]
+}
+
+export type ExtractionUpdateBody = {
+  time_cards: TimeCardEntry[]
+  payslips: PayslipEntry[]
+  /** Conflitos do Gemini ainda abertos; os entre páginas o backend recalcula. */
+  conflicts: Conflict[]
+}
+
+export type Conflict = {
+  field: string
+  values: unknown[]
+  source_pages: number[]
+  note: string | null
 }
 
 export type ExtractionResult = {
@@ -37,7 +55,7 @@ export type ExtractionResult = {
   unclassified_candidate_pages: number[]
   missing_fields: string[]
   ambiguous_fields: string[]
-  conflicts: unknown[]
+  conflicts: Conflict[]
   pdf_page_count: number
   candidate_page_count: number
   gemini_call_count: number

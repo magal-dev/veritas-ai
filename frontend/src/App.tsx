@@ -8,8 +8,8 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
 import { Badge } from '@/components/ui/badge'
-import { createJob, discardJob, downloadExcel, getPreview } from '@/lib/api'
-import type { ApiError, ExtractionResult } from '@/lib/types'
+import { createJob, discardJob, downloadExcel, getPreview, updateExtraction } from '@/lib/api'
+import type { ApiError, ExtractionResult, ExtractionUpdateBody } from '@/lib/types'
 
 type SessionState = {
   jobId: string
@@ -44,6 +44,9 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState(false)
+  const [reviewSaving, setReviewSaving] = useState(false)
+  const [reviewSaveError, setReviewSaveError] = useState<string | null>(null)
+  const [reviewRevision, setReviewRevision] = useState(0)
 
   const reset = useCallback(() => {
     setStep('upload')
@@ -51,7 +54,28 @@ export default function App() {
     setBusy(false)
     setError(null)
     setDiscarded(false)
+    setReviewSaveError(null)
+    setReviewSaving(false)
+    setReviewRevision(0)
   }, [])
+
+  async function handleSaveReview(body: ExtractionUpdateBody) {
+    if (!session.jobId) return
+    setReviewSaving(true)
+    setReviewSaveError(null)
+    try {
+      const preview = await updateExtraction(session.jobId, body)
+      setSession((current) => ({
+        ...current,
+        extraction: preview.extraction,
+      }))
+      setReviewRevision((value) => value + 1)
+    } catch (err) {
+      setReviewSaveError(errorMessage(err))
+    } finally {
+      setReviewSaving(false)
+    }
+  }
 
   async function handleDiscard() {
     if (session.jobId) {
@@ -163,7 +187,11 @@ export default function App() {
           {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
           {step === 'review' && session.extraction && (
             <ReviewStep
+              key={`${session.jobId}-${reviewRevision}`}
               extraction={session.extraction}
+              saving={reviewSaving}
+              saveError={reviewSaveError}
+              onSave={handleSaveReview}
               onContinue={() => setStep('download')}
               onDiscard={() => void handleDiscard()}
             />
