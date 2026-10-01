@@ -27,6 +27,7 @@ dependencies = [
 dev = [
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
+  "pytest-cov>=5.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -36,3 +37,13 @@ include = ["api*", "pipeline*", "models*", "repositories*", "services*", "schema
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "scripts/*", "alembic/*"]
+
+[tool.coverage.report]
+# Piso para o CI: cobertura não pode cair abaixo disso.
+fail_under = 85
+skip_covered = true
+show_missing = true
