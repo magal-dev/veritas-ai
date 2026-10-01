@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from schemas.extraction import ExtractionResult
+from schemas.extraction import ExtractionResult, PayslipEntry, TimeCardEntry
 
 
 class JobStatus(str, Enum):
@@ -38,3 +38,10 @@ class JobPreviewResponse(BaseModel):
     job_id: UUID
     status: JobStatus
     extraction: ExtractionResult
+
+
+class ExtractionUpdateRequest(BaseModel):
+    """Corpo do PATCH de revisão: só listas editáveis pelo perito."""
+
+    time_cards: list[TimeCardEntry]
+    payslips: list[PayslipEntry]

@@ -14,6 +14,7 @@ export type TimeCardEntry = {
   break_start: string | null
   break_end: string | null
   source_page: number
+  source_excerpt?: string | null
   confidence: number
   missing_fields: string[]
   ambiguous_fields: string[]
@@ -23,10 +24,18 @@ export type PayslipEntry = {
   competence: string
   item_name: string
   amount: number
+  base_salary?: number | null
+  overtime_paid_hours?: number | null
   source_page: number
+  source_excerpt?: string | null
   confidence: number
   missing_fields: string[]
   ambiguous_fields: string[]
+}
+
+export type ExtractionUpdateBody = {
+  time_cards: TimeCardEntry[]
+  payslips: PayslipEntry[]
 }
 
 export type Conflict = {

@@ -4,7 +4,7 @@ Extração inteligente de dados processuais para o PJe-Calc — projeto de Traba
 
 Aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha para importação no PJe-Calc.
 
-**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão dos dados extraídos na interface e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais e o Gemini faz o OCR só nas candidatas. Revisão editável e o layout oficial do PJe-Calc permanecem como trabalho futuro.
+**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão editável dos dados extraídos (correções e resolução de conflitos antes do Excel) e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais e o Gemini faz o OCR só nas candidatas. O layout oficial do PJe-Calc permanece como trabalho futuro.
 
 Leia [AGENTS.md](AGENTS.md) antes de implementar (o [CLAUDE.md](CLAUDE.md) traz o guia operacional para agentes). Contratos: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md) e [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md).
 
@@ -37,7 +37,7 @@ Fluxo em 4 etapas (upload, processamento, revisão e download), todo em portugu�
 - **Sem `GEMINI_API_KEY`:** a triagem local roda, mas as candidatas ficam como "não classificadas" e nenhum dado é extraído.
 - **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as envia ao Gemini só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
 - Candidatas além das 5 primeiras não vão ao Gemini; aparecem como pendência na revisão.
-- A tabela de revisão é somente leitura.
+- A revisão permite editar cartões e holerites e salvar na sessão; o Excel só é liberado sem conflitos pendentes.
 
 ## Estrutura do repositório
 
@@ -190,7 +190,8 @@ Prefixo `/api/v1`.
 | POST | `/api/v1/jobs` | Envia o PDF e processa (o arquivo existe só em tempfile durante a requisição) |
 | GET | `/api/v1/jobs/{id}` | Status e metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, mantido em memória |
-| GET | `/api/v1/jobs/{id}/excel` | Download do `.xlsx`, apagado após o envio |
+| PATCH | `/api/v1/jobs/{id}/extraction` | Salva correções da revisão e revalida (memória) |
+| GET | `/api/v1/jobs/{id}/excel` | Download do `.xlsx` (409 se houver conflitos) |
 | DELETE | `/api/v1/jobs/{id}` | Descarta a sessão |
 | GET | `/health` | Verificação de saúde |
 

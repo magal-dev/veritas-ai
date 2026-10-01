@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from api.deps import get_job_service
-from schemas.jobs import JobCreated, JobPreviewResponse, JobStatus, JobStatusResponse
+from schemas.jobs import (
+    ExtractionUpdateRequest,
+    JobCreated,
+    JobPreviewResponse,
+    JobStatus,
+    JobStatusResponse,
+)
 from services.job_service import InvalidPdfError, JobService
 from services.session_store import JobSession
 
@@ -103,6 +109,38 @@ async def preview_job(
     )
 
 
+@router.patch("/{job_id}/extraction", response_model=JobPreviewResponse)
+async def update_job_extraction(
+    job_id: UUID,
+    body: ExtractionUpdateRequest,
+    service: JobService = Depends(get_job_service),
+) -> JobPreviewResponse:
+    session = _require_session(service.get(job_id))
+    if session.extraction is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "EXTRACTION_MISSING",
+                "message": "A sessão não possui JSON extraído.",
+            },
+        )
+    updated = service.update_extraction(job_id, body.time_cards, body.payslips)
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "SESSION_NOT_FOUND",
+                "message": "Sessão inexistente, expirada ou já descartada. Envie o PDF novamente.",
+            },
+        )
+    session = _require_session(service.get(job_id))
+    return JobPreviewResponse(
+        job_id=session.job_id,
+        status=session.status,
+        extraction=session.extraction,
+    )
+
+
 @router.get("/{job_id}/excel")
 async def download_excel(
     job_id: UUID,
@@ -115,6 +153,14 @@ async def download_excel(
             detail={
                 "error_code": "NOT_READY",
                 "message": "A planilha só é gerada após o processamento da sessão.",
+            },
+        )
+    if session.extraction.conflicts:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "CONFLICTS_UNRESOLVED",
+                "message": "Resolva os conflitos na revisão antes de gerar o Excel.",
             },
         )
     payload = service.build_excel(session)

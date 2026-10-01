@@ -6,15 +6,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fieldList } from '@/lib/fields'
 import { toPageRanges } from '@/lib/pages'
-import type { ExtractionResult } from '@/lib/types'
+import {
+  applyBaseSalaryChoice,
+  applyConflictKeepPage,
+  conflictKey,
+  formatConflictValue,
+  parseConflictField,
+} from '@/lib/review-draft'
+import type { Conflict, ExtractionResult, ExtractionUpdateBody, PayslipEntry, TimeCardEntry } from '@/lib/types'
 
 const INITIAL_ROWS = 10
 const ROWS_STEP = 20
 const INITIAL_RANGES = 12
 const INITIAL_CONFLICTS = 5
 
+const inputClass =
+  'w-full min-w-0 rounded-md border border-rule bg-paper px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent'
+
 type ReviewStepProps = {
   extraction: ExtractionResult
+  saving: boolean
+  saveError: string | null
+  onSave: (body: ExtractionUpdateBody) => Promise<void>
   onContinue: () => void
   onDiscard: () => void
 }
@@ -64,7 +77,6 @@ function ShowMore({
 }
 
 function rowDelay(index: number, visible: number): string {
-  // Só as linhas recém-reveladas animam, em cascata curta.
   const offset = Math.max(0, index - (visible - ROWS_STEP))
   return `${Math.min(index < INITIAL_ROWS ? index : offset, 20) * 30}ms`
 }
@@ -91,21 +103,73 @@ function pageLabel(pages: number[]): string {
   return `${pages.length > 1 ? 'pp.' : 'p.'} ${ranges.join(', ')}`
 }
 
-export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProps) {
+export function ReviewStep({
+  extraction,
+  saving,
+  saveError,
+  onSave,
+  onContinue,
+  onDiscard,
+}: ReviewStepProps) {
+  const [timeCards, setTimeCards] = useState(extraction.time_cards)
+  const [payslips, setPayslips] = useState(extraction.payslips)
+  const [openConflicts, setOpenConflicts] = useState(extraction.conflicts)
+  const [dirty, setDirty] = useState(false)
+
   const hasQualityIssues =
     extraction.unclassified_candidate_pages.length > 0 ||
     extraction.missing_fields.length > 0 ||
     extraction.ambiguous_fields.length > 0 ||
-    extraction.conflicts.length > 0
+    openConflicts.length > 0
+
   const [timeCardRows, setTimeCardRows] = useState(INITIAL_ROWS)
   const [payslipRows, setPayslipRows] = useState(INITIAL_ROWS)
   const [showAllRanges, setShowAllRanges] = useState(false)
   const [showAllConflicts, setShowAllConflicts] = useState(false)
+
   const unclassifiedRanges = toPageRanges(extraction.unclassified_candidate_pages)
   const visibleRanges = showAllRanges ? unclassifiedRanges : unclassifiedRanges.slice(0, INITIAL_RANGES)
-  const visibleConflicts = showAllConflicts
-    ? extraction.conflicts
-    : extraction.conflicts.slice(0, INITIAL_CONFLICTS)
+  const visibleConflicts = showAllConflicts ? openConflicts : openConflicts.slice(0, INITIAL_CONFLICTS)
+
+  const canContinue =
+    !dirty && openConflicts.length === 0 && extraction.conflicts.length === 0
+
+  let continueHint = ''
+  if (openConflicts.length > 0) {
+    continueHint = 'Resolva os conflitos e salve as correções.'
+  } else if (dirty) {
+    continueHint = 'Salve as correções antes de seguir para o Excel.'
+  }
+
+  function patchTimeCard(index: number, patch: Partial<TimeCardEntry>) {
+    setTimeCards((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+    setDirty(true)
+  }
+
+  function patchPayslip(index: number, patch: Partial<PayslipEntry>) {
+    setPayslips((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+    setDirty(true)
+  }
+
+  function handleKeepPage(conflict: Conflict, keepPage: number) {
+    const next = applyConflictKeepPage({ time_cards: timeCards, payslips }, conflict, keepPage)
+    setTimeCards(next.time_cards)
+    setPayslips(next.payslips)
+    setOpenConflicts((items) => items.filter((item) => conflictKey(item) !== conflictKey(conflict)))
+    setDirty(true)
+  }
+
+  function handleBaseSalary(conflict: Conflict, salary: number) {
+    const parsed = parseConflictField(conflict.field)
+    if (parsed?.kind !== 'base_salary') return
+    setPayslips(applyBaseSalaryChoice(payslips, parsed.competence, salary))
+    setOpenConflicts((items) => items.filter((item) => conflictKey(item) !== conflictKey(conflict)))
+    setDirty(true)
+  }
+
+  async function handleSave() {
+    await onSave({ time_cards: timeCards, payslips })
+  }
 
   return (
     <div className="space-y-4">
@@ -113,8 +177,8 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
         <CardHeader>
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
-            Os dados extraídos existem só nesta sessão. Revise cartões de ponto e
-            holerites antes de gerar o Excel.
+            Corrija horários e verbas na tabela, resolva conflitos entre páginas e salve antes de
+            gerar o Excel.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
@@ -187,28 +251,60 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                 {fieldList(extraction.ambiguous_fields)}
               </p>
             )}
-            {extraction.conflicts.length > 0 && (
-              <div className="space-y-2">
+            {openConflicts.length > 0 && (
+              <div className="space-y-3">
                 <p>
                   <span className="font-display text-2xl leading-none text-accent">
-                    {extraction.conflicts.length}
+                    {openConflicts.length}
                   </span>{' '}
-                  conflito(s) entre páginas — os dois valores seguem para o Excel; confira no PDF.
+                  conflito(s) entre páginas — escolha qual versão manter ou iguale os valores na
+                  tabela.
                 </p>
-                <ul className="space-y-1.5" aria-label="Conflitos entre páginas">
-                  {visibleConflicts.map((conflict, index) => (
-                    <li
-                      key={`${conflict.field}-${index}`}
-                      className="flex flex-col gap-1 border-l-2 border-accent/60 pl-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-                    >
-                      <span className="text-ink">{conflict.note ?? conflict.field}</span>
-                      <span className="shrink-0 font-mono text-xs tabular-nums">
-                        {pageLabel(conflict.source_pages)}
-                      </span>
-                    </li>
-                  ))}
+                <ul className="space-y-3" aria-label="Conflitos entre páginas">
+                  {visibleConflicts.map((conflict, index) => {
+                    const parsed = parseConflictField(conflict.field)
+                    const isBaseSalary = parsed?.kind === 'base_salary'
+                    return (
+                      <li
+                        key={`${conflict.field}-${index}`}
+                        className="space-y-2 border-l-2 border-accent/60 pl-3"
+                      >
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                          <span className="text-ink">{conflict.note ?? conflict.field}</span>
+                          <span className="shrink-0 font-mono text-xs tabular-nums">
+                            {pageLabel(conflict.source_pages)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {isBaseSalary
+                            ? conflict.values.map((value, valueIndex) => (
+                                <Button
+                                  key={valueIndex}
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleBaseSalary(conflict, Number(value))}
+                                >
+                                  Usar {formatConflictValue(value)}
+                                </Button>
+                              ))
+                            : conflict.source_pages.map((page) => (
+                                <Button
+                                  key={page}
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleKeepPage(conflict, page)}
+                                >
+                                  Manter p. {page}
+                                </Button>
+                              ))}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
-                {extraction.conflicts.length > INITIAL_CONFLICTS && (
+                {openConflicts.length > INITIAL_CONFLICTS && (
                   <button
                     type="button"
                     className="text-xs font-semibold text-accent underline-offset-2 hover:underline"
@@ -216,7 +312,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
                   >
                     {showAllConflicts
                       ? 'ver menos'
-                      : `+${extraction.conflicts.length - INITIAL_CONFLICTS} conflitos`}
+                      : `+${openConflicts.length - INITIAL_CONFLICTS} conflitos`}
                   </button>
                 )}
               </div>
@@ -243,26 +339,66 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {extraction.time_cards.length === 0 ? (
+              {timeCards.length === 0 ? (
                 <EmptyRow
                   columns={6}
                   message="Nenhum cartão de ponto classificado nesta sessão."
                 />
               ) : (
-                extraction.time_cards.slice(0, timeCardRows).map((row, index) => (
+                timeCards.slice(0, timeCardRows).map((row, index) => (
                   <TableRow
                     key={`${row.date}-${row.source_page}-${index}`}
                     className={`animate-rise ${attentionClass(row)}`}
                     title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, timeCardRows) }}
                   >
-                    <TableCell>{row.date}</TableCell>
-                    <TableCell>{row.clock_in ?? '—'}</TableCell>
-                    <TableCell>{row.clock_out ?? '—'}</TableCell>
                     <TableCell>
-                      {row.break_start || row.break_end
-                        ? `${row.break_start ?? '—'} – ${row.break_end ?? '—'}`
-                        : '—'}
+                      <input
+                        className={inputClass}
+                        value={row.date}
+                        onChange={(event) => patchTimeCard(index, { date: event.target.value })}
+                        aria-label={`Data linha ${index + 1}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        className={inputClass}
+                        value={row.clock_in ?? ''}
+                        onChange={(event) =>
+                          patchTimeCard(index, { clock_in: event.target.value || null })
+                        }
+                        aria-label={`Entrada linha ${index + 1}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        className={inputClass}
+                        value={row.clock_out ?? ''}
+                        onChange={(event) =>
+                          patchTimeCard(index, { clock_out: event.target.value || null })
+                        }
+                        aria-label={`Saída linha ${index + 1}`}
+                      />
+                    </TableCell>
+                    <TableCell className="space-y-1">
+                      <input
+                        className={inputClass}
+                        value={row.break_start ?? ''}
+                        placeholder="início"
+                        onChange={(event) =>
+                          patchTimeCard(index, { break_start: event.target.value || null })
+                        }
+                        aria-label={`Início intervalo linha ${index + 1}`}
+                      />
+                      <input
+                        className={inputClass}
+                        value={row.break_end ?? ''}
+                        placeholder="fim"
+                        onChange={(event) =>
+                          patchTimeCard(index, { break_end: event.target.value || null })
+                        }
+                        aria-label={`Fim intervalo linha ${index + 1}`}
+                      />
                     </TableCell>
                     <TableCell>{row.source_page}</TableCell>
                     <TableCell>{row.confidence.toFixed(2)}</TableCell>
@@ -273,7 +409,7 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           </Table>
           <ShowMore
             visible={timeCardRows}
-            total={extraction.time_cards.length}
+            total={timeCards.length}
             onMore={() => setTimeCardRows((rows) => rows + ROWS_STEP)}
             onCollapse={() => setTimeCardRows(INITIAL_ROWS)}
           />
@@ -297,26 +433,48 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {extraction.payslips.length === 0 ? (
+              {payslips.length === 0 ? (
                 <EmptyRow
                   columns={5}
                   message="Nenhum holerite classificado nesta sessão."
                 />
               ) : (
-                extraction.payslips.slice(0, payslipRows).map((row, index) => (
+                payslips.slice(0, payslipRows).map((row, index) => (
                   <TableRow
                     key={`${row.competence}-${row.item_name}-${row.source_page}-${index}`}
                     className={`animate-rise ${attentionClass(row)}`}
                     title={attentionTitle(row)}
                     style={{ animationDelay: rowDelay(index, payslipRows) }}
                   >
-                    <TableCell>{row.competence}</TableCell>
-                    <TableCell>{row.item_name}</TableCell>
                     <TableCell>
-                      {row.amount.toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })}
+                      <input
+                        className={inputClass}
+                        value={row.competence}
+                        onChange={(event) => patchPayslip(index, { competence: event.target.value })}
+                        aria-label={`Competência linha ${index + 1}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        className={inputClass}
+                        value={row.item_name}
+                        onChange={(event) => patchPayslip(index, { item_name: event.target.value })}
+                        aria-label={`Verba linha ${index + 1}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        className={inputClass}
+                        inputMode="decimal"
+                        value={String(row.amount)}
+                        onChange={(event) => {
+                          const parsed = Number.parseFloat(event.target.value.replace(',', '.'))
+                          if (!Number.isNaN(parsed)) {
+                            patchPayslip(index, { amount: parsed })
+                          }
+                        }}
+                        aria-label={`Valor linha ${index + 1}`}
+                      />
                     </TableCell>
                     <TableCell>{row.source_page}</TableCell>
                     <TableCell>{row.confidence.toFixed(2)}</TableCell>
@@ -327,20 +485,42 @@ export function ReviewStep({ extraction, onContinue, onDiscard }: ReviewStepProp
           </Table>
           <ShowMore
             visible={payslipRows}
-            total={extraction.payslips.length}
+            total={payslips.length}
             onMore={() => setPayslipRows((rows) => rows + ROWS_STEP)}
             onCollapse={() => setPayslipRows(INITIAL_ROWS)}
           />
         </CardContent>
       </Card>
 
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-        <Button type="button" variant="ghost" onClick={onDiscard}>
+      {saveError && (
+        <p className="text-sm text-destructive" role="alert">
+          {saveError}
+        </p>
+      )}
+
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Button type="button" variant="ghost" onClick={onDiscard} disabled={saving}>
           Descartar sessão agora
         </Button>
-        <Button type="button" size="lg" onClick={onContinue}>
-          Seguir para o Excel
-        </Button>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          {continueHint && (
+            <p className="text-center text-xs text-ink-muted sm:text-right">{continueHint}</p>
+          )}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              disabled={!dirty || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? 'Salvando…' : 'Salvar correções'}
+            </Button>
+            <Button type="button" size="lg" disabled={!canContinue || saving} onClick={onContinue}>
+              Seguir para o Excel
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

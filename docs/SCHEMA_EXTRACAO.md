@@ -65,7 +65,7 @@ Valores monetários em `decimal` (string ou number), sempre com duas casas na ex
 
 - Campo não encontrado: omitir o valor e listar o nome em `missing_fields`.
 - Campo ambíguo: manter o valor de maior confiança e listar em `ambiguous_fields`.
-- Conflito entre documentos: registrar em `conflicts` sem escolher automaticamente; a revisão humana na sessão decide.
+- Conflito entre documentos: registrar em `conflicts` sem escolher automaticamente; a revisão humana na sessão decide (escolher uma página/valor ou igualar campos na tabela e salvar via `PATCH /api/v1/jobs/{id}/extraction`).
 - Confiança abaixo de `0.5`: o registro pode ir ao Excel, mas a UI de revisão deve destacá-lo.
 
 ## Validação (`pipeline/validator.py`)
@@ -88,6 +88,10 @@ Roda depois do Gemini e antes da revisão. São regras de formato e coerência i
 | Repetição na mesma página | Preservada (ex.: duas linhas da mesma verba) |
 
 Verbas são comparadas ignorando maiúsculas, acentos e espaços extras. Os registros saem ordenados por data (cartão) e competência (holerite). As listas `missing_fields` e `ambiguous_fields` do resultado reúnem, sem repetição, as pendências da página e dos registros.
+
+### Revisão editável (sessão)
+
+Depois da validação inicial, o perito pode corrigir `time_cards` e `payslips` na interface e enviar `PATCH /api/v1/jobs/{id}/extraction` com essas listas. O backend zera `conflicts` antes de revalidar: manter só uma versão por dia/verba remove o conflito; valores iguais viram duplicata e também removem o conflito. Salário-base conflitante deve ser unificado em todas as verbas da mesma competência. O download do Excel (`GET /excel`) responde `409` com `CONFLICTS_UNRESOLVED` enquanto restar qualquer conflito na sessão.
 
 ## O que este schema não é
 
