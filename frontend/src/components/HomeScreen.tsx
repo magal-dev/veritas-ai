@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowRight, Check } from 'lucide-react'
+import { Fragment, useEffect, useState } from 'react'
 
 import { BrandBar } from '@/components/BrandBar'
 import { CountUp } from '@/components/CountUp'
@@ -63,36 +64,95 @@ const ABSENCES = [
   'Banco apenas com metadados operacionais',
 ]
 
-/* Mosaico de páginas: 6 × 8 folhas, poucas acendem como candidatas. */
+/*
+ * Mosaico de páginas: a cada ciclo um "processo" diferente passa pela triagem.
+ * A linha de leitura desce, as candidatas acendem à medida que ela passa e a
+ * legenda acompanha (5 páginas por chamada, como na camada 3).
+ */
 const COLS = 6
 const ROWS = 8
-const CANDIDATES = new Set([9, 10, 11, 26, 27, 40])
-const SCAN_START = 0.9
+const PAGES_PER_CALL = 5
+const SCAN_FIRST_DELAY = 0.9
+const SCAN_DELAY = 0.5
 const SCAN_DURATION = 2.6
+const CYCLE_MS = 6000
+
+const SCENARIOS: { pages: number; candidates: number[] }[] = [
+  { pages: 48, candidates: [9, 10, 11, 26, 27, 40] },
+  { pages: 42, candidates: [3, 4, 5, 6, 7, 19, 20, 33] },
+  { pages: 45, candidates: [14, 15, 16, 28, 29, 30, 31, 32, 33, 34, 41] },
+  { pages: 36, candidates: [7, 8, 22] },
+  { pages: 48, candidates: [0, 1, 12, 13, 14, 15, 24, 25, 26, 36, 37, 38, 39, 44] },
+]
+
+function plural(count: number, singular: string, pluralForm: string) {
+  return count === 1 ? singular : pluralForm
+}
+
+function usePageCycle() {
+  // -1: nada aceso ainda; o primeiro ciclo entra depois da animação de abertura.
+  const [cycle, setCycle] = useState(-1)
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const id = requestAnimationFrame(() => setCycle(0))
+      return () => cancelAnimationFrame(id)
+    }
+    let interval = 0
+    const first = window.setTimeout(() => {
+      setCycle(0)
+      interval = window.setInterval(() => setCycle((value) => value + 1), CYCLE_MS)
+    }, 50)
+    return () => {
+      window.clearTimeout(first)
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  return cycle
+}
 
 function PageLattice() {
+  const cycle = usePageCycle()
+  const scenario = SCENARIOS[Math.max(cycle, 0) % SCENARIOS.length]
+  const lit = new Set(cycle < 0 ? [] : scenario.candidates)
+  const candidates = lit.size
+  const calls = Math.ceil(candidates / PAGES_PER_CALL)
+  const scanDelay = cycle <= 0 ? SCAN_FIRST_DELAY : SCAN_DELAY
+
   return (
     <figure className="flex flex-col gap-4" aria-label="Ilustração: entre muitas páginas, poucas são selecionadas para leitura">
       <div className="relative overflow-hidden rounded-main border border-offwhite/20 p-4 sm:p-5">
         <div className="grid grid-cols-6 gap-2 sm:gap-2.5">
           {Array.from({ length: COLS * ROWS }, (_, index) => {
             const row = Math.floor(index / COLS)
-            const hit = CANDIDATES.has(index)
-            const lit = SCAN_START + (row / ROWS) * SCAN_DURATION
+            const hit = lit.has(index)
+            const present = index < scenario.pages
+            const reach = scanDelay + (row / ROWS) * SCAN_DURATION
             return (
               <span
                 key={index}
                 aria-hidden
-                className="relative block aspect-[3/4] animate-fade rounded-[2px] border border-offwhite/15 bg-offwhite/[0.03]"
+                className="block animate-fade"
                 style={{ animationDelay: `${150 + index * 12}ms` }}
               >
-                <span className="absolute inset-x-[18%] top-[22%] block h-px bg-offwhite/15" />
-                <span className="absolute inset-x-[18%] top-[38%] block h-px bg-offwhite/10" />
-                <span className="absolute inset-x-[18%] top-[54%] block h-px w-[40%] bg-offwhite/10" />
-                {hit && (
+                <span
+                  className={cn(
+                    'relative block aspect-[3/4] rounded-[2px] border border-offwhite/15 bg-offwhite/[0.03] transition-opacity duration-700',
+                    !present && 'opacity-0',
+                  )}
+                >
+                  <span className="absolute inset-x-[18%] top-[22%] block h-px bg-offwhite/15" />
+                  <span className="absolute inset-x-[18%] top-[38%] block h-px bg-offwhite/10" />
+                  <span className="absolute inset-x-[18%] top-[54%] block h-px w-[40%] bg-offwhite/10" />
                   <span
-                    className="absolute -inset-px block animate-pop rounded-[2px] bg-offwhite shadow-[0_0_24px_-2px_rgba(236,231,211,0.55)]"
-                    style={{ animationDelay: `${lit}s` }}
+                    className={cn(
+                      'absolute -inset-px block rounded-[2px] bg-offwhite shadow-[0_0_24px_-2px_rgba(236,231,211,0.55)] transition-[opacity,transform]',
+                      hit
+                        ? 'scale-100 opacity-100 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]'
+                        : 'scale-75 opacity-0 duration-300 ease-out',
+                    )}
+                    style={{ transitionDelay: hit ? `${reach}s` : '0s' }}
                   >
                     {[22, 34, 46, 58, 70].map((top) => (
                       <span
@@ -102,25 +162,38 @@ function PageLattice() {
                       />
                     ))}
                   </span>
-                )}
+                </span>
               </span>
             )
           })}
         </div>
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 block h-full animate-scan"
-          style={{ animationDelay: `${SCAN_START}s`, animationDuration: `${SCAN_DURATION}s` }}
-        >
-          <span className="block h-px bg-offwhite/70 shadow-[0_0_16px_2px_rgba(236,231,211,0.45)]" />
-        </span>
+        {cycle >= 0 && (
+          <span
+            key={cycle}
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 block h-full animate-scan"
+            style={{ animationDelay: `${scanDelay}s`, animationDuration: `${SCAN_DURATION}s` }}
+          >
+            <span className="block h-px bg-offwhite/70 shadow-[0_0_16px_2px_rgba(236,231,211,0.45)]" />
+          </span>
+        )}
       </div>
-      <figcaption className="eyebrow flex flex-wrap items-center gap-x-3 gap-y-1 text-offwhite/60">
-        <span>48 páginas</span>
-        <ArrowRight className="h-3 w-3" aria-hidden />
-        <span className="text-offwhite">6 candidatas</span>
-        <ArrowRight className="h-3 w-3" aria-hidden />
-        <span>2 chamadas</span>
+      <figcaption className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-x-2 text-offwhite/60 sm:gap-x-4">
+        {[
+          { value: scenario.pages, label: 'páginas', duration: 700 },
+          { value: candidates, label: plural(candidates, 'candidata', 'candidatas'), highlight: true },
+          { value: calls, label: plural(calls, 'chamada', 'chamadas') },
+        ].map((item, index) => (
+          <Fragment key={index}>
+            {index > 0 && <ArrowRight className="mb-1 h-3 w-3 shrink-0" aria-hidden />}
+            <span className={cn('flex min-w-0 flex-col gap-1', item.highlight && 'text-offwhite')}>
+              <span className="font-display text-3xl leading-none tabular-nums">
+                <CountUp value={item.value} duration={item.duration ?? (scanDelay + SCAN_DURATION) * 1000} />
+              </span>
+              <span className="eyebrow tracking-[0.14em] sm:tracking-[0.2em]">{item.label}</span>
+            </span>
+          </Fragment>
+        ))}
       </figcaption>
     </figure>
   )
