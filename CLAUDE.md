@@ -8,7 +8,7 @@ Guia operacional para o Claude Code. A fonte de verdade de produto, stack, priva
 
 ## Resumo rápido
 
-TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera um `.xlsx` provisório para o PJe-Calc. Nada processual é persistido.
+TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera um `.xlsx` provisório para o PJe-Calc. Páginas escaneadas são pontuadas localmente por sinais visuais e vão ao Gemini (que faz o OCR) só nas vagas restantes. Nada processual é persistido.
 
 - Backend: `backend/` (FastAPI, Python ≥ 3.11). Imports absolutos a partir de `backend/` (`from core.config import settings`), pois `pythonpath = ["."]`.
 - Frontend: `frontend/` (Vite + React 19 + TypeScript + Tailwind 4 + shadcn/ui).

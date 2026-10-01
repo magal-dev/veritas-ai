@@ -4,7 +4,12 @@ Camada 1: texto de todas as páginas via PyMuPDF + palavras-chave e padrões tab
 (horários, valores monetários) por regex.
 Camada 2: TOC, densidade de texto, vizinhos de hits e confirmação de tabelas com
 pdfplumber apenas na shortlist (a detecção de tabelas é a operação local mais cara).
-Não persiste texto. O tempfile do PDF é responsabilidade do service (unlink no finally).
+Trilha visual: página com pouco texto extraível e imagem embutida (ou praticamente um
+raster) é pontuada sem API por um pixmap cinza de 72 DPI (faixas de linhas com tinta e
+traços horizontais). Essas páginas só ocupam as vagas que sobram depois das candidatas
+de texto. Limitação conhecida: uma petição escaneada também tem muitas faixas de texto e
+pode ocupar uma vaga restante; o Gemini a classifica como IRRELEVANTE.
+Não persiste texto nem imagem: o pixmap é descartado ao fim de cada página. O tempfile do PDF é responsabilidade do service (unlink no finally).
 """
 
 from __future__ import annotations
@@ -55,6 +60,34 @@ MAX_CANDIDATE_PAGES = 25
 # pdfplumber.extract_tables só roda nas páginas mais bem pontuadas.
 TABLE_CHECK_PAGES = 10
 
+# Trilha visual (PDF escaneado). Página com até MAX_VISUAL_TEXT_CHARS caracteres não
+# brancos e alguma imagem embutida é visual; o limite comporta o rodapé de assinatura
+# do PJe sem abranger uma petição com texto.
+MAX_VISUAL_TEXT_CHARS = 200
+# Imagem cobrindo quase toda a página: scan com camada OCR inútil (sem sinal de texto).
+RASTER_COVERAGE_MIN = 0.85
+VISUAL_DPI = 72
+# Pixel é tinta se mais escuro que INK_RELATIVE x média da página (o papel domina a
+# média, então o limiar acompanha scans claros ou escuros).
+INK_RELATIVE = 0.7
+# Fração mínima de pixels de tinta por linha para a linha contar como "com tinta".
+INK_ROW_MIN_RATIO = 0.005
+# Página em branco / ruído de scanner fica abaixo; foto ou página preta fica acima.
+MIN_INK_RATIO = 0.0005
+MAX_INK_RATIO = 0.5
+# Cartão de ponto ou holerite: muitas faixas de linhas, ou traços de tabela.
+MIN_VISUAL_BANDS = 8
+MIN_RULED_ROWS = 16
+# Vizinho visual (continuação de cartão escaneado) precisa de algumas linhas; um
+# carimbo isolado tem uma ou duas faixas.
+MIN_NEIGHBOR_BANDS = 3
+# Traço horizontal: sequência de tinta com pelo menos esta fração da largura.
+RULE_MIN_RUN_RATIO = 0.06
+MAX_SCORED_BANDS = 40
+MAX_SCORED_RULED_ROWS = 40
+VISUAL_BAND_SCORE = 2.0
+VISUAL_RULE_SCORE = 1.0
+
 
 @dataclass
 class PageSignal:
@@ -65,6 +98,11 @@ class PageSignal:
     table_hint: bool = False
     toc_match: bool = False
     score: float = 0.0
+    # Trilha visual: só métricas agregadas, nunca pixels.
+    visual: bool = False
+    ink_ratio: float = 0.0
+    ink_bands: int = 0
+    ruled_rows: int = 0
 
 
 @dataclass
@@ -142,6 +180,79 @@ def _rank(signals: list[PageSignal]) -> list[PageSignal]:
     return sorted(signals, key=lambda item: (-item.score, item.page_number))
 
 
+def _image_stats(page: fitz.Page) -> tuple[int, float]:
+    """Quantidade de imagens e fração da página coberta por elas, sem decodificá-las."""
+    page_rect = page.rect
+    page_area = max(float(page_rect.width * page_rect.height), 1.0)
+    infos = page.get_image_info()
+    covered = 0.0
+    for info in infos:
+        bbox = fitz.Rect(info.get("bbox", (0, 0, 0, 0))) & page_rect
+        if not bbox.is_empty:
+            covered += float(bbox.width * bbox.height)
+    return len(infos), min(covered / page_area, 1.0)
+
+
+def _is_visual_page(text: str, image_count: int, coverage: float, signal: PageSignal) -> bool:
+    if _has_primary_signal(signal):
+        return False
+    char_count = sum(1 for char in text if not char.isspace())
+    if char_count <= MAX_VISUAL_TEXT_CHARS and image_count >= 1:
+        return True
+    return coverage >= RASTER_COVERAGE_MIN
+
+
+def _measure_visual(page: fitz.Page, signal: PageSignal) -> None:
+    """Pixmap cinza pequeno: proporção de tinta, faixas de linhas e traços horizontais."""
+    pixmap = page.get_pixmap(dpi=VISUAL_DPI, colorspace=fitz.csGRAY, alpha=False)
+    width, height, stride = pixmap.width, pixmap.height, pixmap.stride
+    samples = pixmap.samples
+    pixmap = None
+    if width == 0 or height == 0:
+        return
+    threshold = int(sum(samples) / len(samples) * INK_RELATIVE)
+    binary = samples.translate(bytes(1 if value < threshold else 0 for value in range(256)))
+    samples = None
+    min_row_ink = max(2, int(width * INK_ROW_MIN_RATIO))
+    rule = re.compile(rb"\x01{%d,}" % max(2, int(width * RULE_MIN_RUN_RATIO)))
+
+    ink_pixels = bands = ruled = 0
+    previous_inked = False
+    for row_start in range(0, height * stride, stride):
+        row = binary[row_start : row_start + width]
+        row_ink = row.count(1)
+        ink_pixels += row_ink
+        inked = row_ink >= min_row_ink
+        if inked and not previous_inked:
+            bands += 1
+        previous_inked = inked
+        if rule.search(row):
+            ruled += 1
+
+    signal.ink_ratio = ink_pixels / (width * height)
+    signal.ink_bands = bands
+    signal.ruled_rows = ruled
+
+
+def _has_ink(signal: PageSignal) -> bool:
+    return MIN_INK_RATIO <= signal.ink_ratio <= MAX_INK_RATIO
+
+
+def _is_visual_table(signal: PageSignal) -> bool:
+    if not signal.visual or not _has_ink(signal):
+        return False
+    if signal.ink_bands >= MIN_VISUAL_BANDS:
+        return True
+    return signal.ruled_rows >= MIN_RULED_ROWS and signal.ink_bands >= MIN_NEIGHBOR_BANDS
+
+
+def _visual_score(signal: PageSignal) -> float:
+    return (
+        min(signal.ink_bands, MAX_SCORED_BANDS) * VISUAL_BAND_SCORE
+        + min(signal.ruled_rows, MAX_SCORED_RULED_ROWS) * VISUAL_RULE_SCORE
+    )
+
+
 class LocalDocumentExtractor(DocumentExtractor):
     """Camadas 1–2: triagem local sem chamadas à API."""
 
@@ -170,6 +281,10 @@ class LocalDocumentExtractor(DocumentExtractor):
                     toc_match=index in toc_pages,
                 )
                 signal.score = _score_page(signal)
+                image_count, coverage = _image_stats(page)
+                if _is_visual_page(text, image_count, coverage, signal):
+                    signal.visual = True
+                    _measure_visual(page, signal)
                 signals_by_page[index] = signal
         finally:
             document.close()
@@ -182,7 +297,11 @@ class LocalDocumentExtractor(DocumentExtractor):
                 continue
             for neighbor in (page_number - 1, page_number + 1):
                 neighbor_signal = signals_by_page.get(neighbor)
-                if neighbor_signal is None or _has_primary_signal(neighbor_signal):
+                if (
+                    neighbor_signal is None
+                    or neighbor_signal.visual
+                    or _has_primary_signal(neighbor_signal)
+                ):
                     continue
                 # Petição vizinha de um anexo cita INSS/FGTS e um ou dois números; um
                 # fim de cartão de ponto sem cabeçalho não tem palavra-chave.
@@ -202,16 +321,24 @@ class LocalDocumentExtractor(DocumentExtractor):
         if table_checked:
             ranked = _rank(ranked)
 
+        visual_ranked = _rank_visual(signals_by_page, ranked)
+
+        # Candidatas de texto têm prioridade; páginas visuais só ocupam as vagas restantes.
+        free_slots = MAX_CANDIDATE_PAGES - min(len(ranked), MAX_CANDIDATE_PAGES)
         candidate_pages = [item.page_number for item in ranked[:MAX_CANDIDATE_PAGES]]
+        candidate_pages += [item.page_number for item in visual_ranked[:free_slots]]
         overflow_pages = [item.page_number for item in ranked[MAX_CANDIDATE_PAGES:]]
+        overflow_pages += [item.page_number for item in visual_ranked[free_slots:]]
 
         logger.info(
             "extractor.complete pdf_page_count=%s candidate_page_count=%s overflow_count=%s "
-            "table_checked=%s duration_ms=%s",
+            "table_checked=%s visual_page_count=%s visual_candidate_count=%s duration_ms=%s",
             page_count,
             len(candidate_pages),
             len(overflow_pages),
             table_checked,
+            sum(1 for signal in signals_by_page.values() if signal.visual),
+            min(len(visual_ranked), free_slots),
             int((time.perf_counter() - started) * 1000),
         )
 
@@ -226,7 +353,10 @@ class LocalDocumentExtractor(DocumentExtractor):
     @staticmethod
     def _confirm_tables(pdf_path: Path, shortlist: list[PageSignal]) -> int:
         """Detecta tabelas com pdfplumber só na shortlist e recalcula o score."""
-        primary = [signal for signal in shortlist if _has_primary_signal(signal)]
+        # Página só imagem nunca chega ao extract_tables (não há texto para o pdfplumber).
+        primary = [
+            signal for signal in shortlist if _has_primary_signal(signal) and not signal.visual
+        ]
         if not primary:
             return 0
         with pdfplumber.open(pdf_path) as pdf:
@@ -240,6 +370,37 @@ class LocalDocumentExtractor(DocumentExtractor):
                     page.close()
                 signal.score = _score_page(signal)
         return len(primary)
+
+
+def _rank_visual(
+    signals_by_page: dict[int, PageSignal], text_ranked: list[PageSignal]
+) -> list[PageSignal]:
+    """Páginas visuais com aspecto de tabela e vizinhos ±1 também visuais."""
+    accepted: dict[int, PageSignal] = {}
+    for page_number, signal in signals_by_page.items():
+        if _is_visual_table(signal):
+            signal.score = _visual_score(signal)
+            accepted[page_number] = signal
+
+    # Continuação de cartão escaneado: o vizinho precisa ser visual e ter algumas linhas.
+    anchors = set(accepted) | {
+        signal.page_number for signal in text_ranked if signal.keyword_hits
+    }
+    for anchor in sorted(anchors):
+        for neighbor in (anchor - 1, anchor + 1):
+            neighbor_signal = signals_by_page.get(neighbor)
+            if (
+                neighbor_signal is None
+                or neighbor in accepted
+                or not neighbor_signal.visual
+                or not _has_ink(neighbor_signal)
+                or neighbor_signal.ink_bands < MIN_NEIGHBOR_BANDS
+            ):
+                continue
+            neighbor_signal.score = NEIGHBOR_SCORE
+            accepted[neighbor] = neighbor_signal
+
+    return _rank(list(accepted.values()))
 
 
 class StubDocumentExtractor(DocumentExtractor):

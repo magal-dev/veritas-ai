@@ -214,8 +214,9 @@ def _build_pipeline_note(
         )
     if candidate_count == 0:
         return (
-            "Triagem local concluída sem páginas candidatas. PDFs escaneados "
-            "(sem texto extraível) ainda não são suportados nesta versão."
+            "Triagem local concluída sem páginas candidatas. Páginas escaneadas entram "
+            "na triagem quando a imagem tem aspecto de tabela; páginas em branco ou sem "
+            "estrutura tabular são ignoradas."
         )
     return (
         f"Triagem local + Gemini concluídas. {candidate_count} página(s) candidata(s), "
