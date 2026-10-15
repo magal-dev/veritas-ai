@@ -211,6 +211,8 @@ python scripts/benchmark_pipeline.py 300   # tempo da triagem local, sem Gemini
 python scripts/evaluate_models.py          # compara modelos Gemini com gabarito sintético (usa a API)
 python scripts/evaluate_extraction.py processo.pdf gabarito.json [--json m.json] [--local-only]
                                            # pipeline completo contra gabarito; imprime só métricas
+python scripts/evaluate_cell_fallback.py gabarito.json folha*.jpg [--send] [--save-crops dir/]
+                                           # experimento: OCR local + Gemini só em recortes de célula
 
 # Frontend (a partir de frontend/)
 npm run build                              # tsc -b + vite build
@@ -221,6 +223,8 @@ npm test                                   # vitest
 Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do cliente `google-genai`.
 
 **Avaliação com processos reais.** O formato do gabarito está no topo de `scripts/evaluate_extraction.py`. A saída tem só contagens e porcentagens (recall/precisão da triagem, acurácia da classificação, horários e verbas corretos, itens inventados, chamadas e tempo). PDFs e gabaritos reais contêm dados pessoais: mantenha-os fora do repositório (a pasta `avaliacao-local/` e arquivos `*.gabarito.json` são ignorados pelo git) e apague-os ao terminar.
+
+**Experimento: fallback anônimo por célula.** `scripts/evaluate_cell_fallback.py` mede uma alternativa em que a página nunca sai do servidor: OCR local (Tesseract, dependência só do script) monta o cartão de ponto, e só os horários duvidosos vão ao Gemini, como recorte da célula, com id aleatório e sem data, nome ou cabeçalho. Uma trava barra recortes com letras ou mais de um horário. Sem `--send` nada é enviado; `--save-crops` grava exatamente o que sairia, para inspeção. Foi escrito para um layout de cartão de ponto específico (período "dd/mm/aaaa à dd/mm/aaaa", colunas Ent/Sai) e não faz parte do pipeline.
 
 ## Privacidade
 
