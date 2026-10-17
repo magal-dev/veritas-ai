@@ -79,10 +79,13 @@ OCR_DIGITS = str.maketrans({"O": "0", "C": "0", "D": "0", "Q": "0", "B": "8", "�
 TARGET_HEIGHT = 3200  # ~ 290 DPI numa folha A4/carta
 CELL_PAD = 4
 TOLERANCE_MIN = 75  # distância máxima da jornada contratual para aceitar um horário
-GEMINI_BATCH = 40
+GEMINI_BATCH = 10  # lotes pequenos em paralelo: latência do lote mais lento, não a soma
 CELL_PROMPT = """Cada imagem a seguir é o recorte de uma única célula de uma tabela impressa e
-contém um horário no formato HH:mm (ex.: 08:05). Transcreva exatamente o que está impresso.
-Se algum dígito não for legível com segurança, devolva null para aquela célula; não adivinhe.
+contém um horário no formato HH:mm (ex.: 08:05), impresso por relógio de ponto (matricial,
+às vezes falhado ou borrado). Transcreva exatamente o que está impresso, dígito a dígito.
+Pares que se confundem nessa impressão: 0/8, 3/8, 5/6, 1/7, 0/9. Se qualquer dígito puder ser
+um desses pares, ou estiver incompleto, devolva null para aquela célula. Um null é muito
+melhor que um valor errado: não adivinhe e não complete pelo contexto.
 Responda SOMENTE com JSON: {"cells": [{"id": "<id>", "value": "HH:mm" | null}]}"""
 
 
@@ -309,29 +312,47 @@ def cell_gate(image: Image.Image, cell: Cell) -> bool:
 # ---------------------------------------------------------------- Gemini (só células)
 
 
-def ask_gemini(crops: dict[str, Image.Image], model: str) -> tuple[dict[str, str | None], int]:
+def ask_gemini(crops: dict[str, Image.Image], model: str, batch_size: int = GEMINI_BATCH) -> tuple[dict[str, str | None], int]:
     from google import genai
-    from google.genai import types
+    from google.genai import errors, types
 
     client = genai.Client(api_key=settings.gemini_api_key)
     config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
     ids = list(crops)
     random.shuffle(ids)  # a ordem não revela a sequência dos dias
-    answers: dict[str, str | None] = {}
-    calls = 0
-    for start in range(0, len(ids), GEMINI_BATCH):
+
+    def call(batch: list[str]) -> dict[str, str | None]:
         contents: list[Any] = [CELL_PROMPT]
-        for cell_id in ids[start:start + GEMINI_BATCH]:
+        for cell_id in batch:
             buffer = io.BytesIO()
             crops[cell_id].save(buffer, "PNG")
             contents += [f"Célula {cell_id}:", types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/png")]
-        response = client.models.generate_content(model=model, contents=contents, config=config)
-        calls += 1
+        for attempt in range(3):  # como no classificador: até 3 tentativas em 429/5xx
+            try:
+                response = client.models.generate_content(model=model, contents=contents, config=config)
+                break
+            except errors.APIError as exc:
+                if attempt == 2 or not (exc.code == 429 or exc.code >= 500):
+                    raise
+                time.sleep(5 * (attempt + 1))
         payload = json.loads(re.sub(r"^```(?:json)?|```$", "", (response.text or "").strip()))
-        for item in payload.get("cells", []):
-            if item.get("id") in crops:
-                answers[item["id"]] = to_time(str(item["value"])) if item.get("value") else None
-    return answers, calls
+        return {
+            item["id"]: to_time(str(item["value"])) if item.get("value") else None
+            for item in payload.get("cells", [])
+            if item.get("id") in crops
+        }
+
+    batches = [ids[start:start + batch_size] for start in range(0, len(ids), batch_size)]
+    answers: dict[str, str | None] = {}
+    with ThreadPoolExecutor(len(batches) or 1) as pool:
+        for partial in pool.map(call, batches):
+            answers.update(partial)
+    return answers, len(batches)
+
+
+def prepare_for_send(crop: Image.Image, scale: int) -> Image.Image:
+    """Só amplia o recorte já aprovado pela trava; o conteúdo é o mesmo."""
+    return crop if scale <= 1 else crop.resize((crop.width * scale, crop.height * scale), Image.LANCZOS)
 
 
 # ---------------------------------------------------------------- avaliação
@@ -365,6 +386,7 @@ class Report:
     cells_sent: int
     gemini_calls: int
     gemini_correct_on_sent: int | None
+    gemini_null_on_sent: int | None
     invented_on_days_off: int
     schedule_source: str
     strategies: dict[str, dict[str, int]]
@@ -412,10 +434,13 @@ def evaluate(args: argparse.Namespace) -> Report:
     to_send = {f"c{secrets.token_hex(3)}": i for i, ok in zip(doubtful, gate_ok) if ok}
     seconds_local = time.perf_counter() - started
 
+    def outgoing(index: int) -> Image.Image:
+        return prepare_for_send(crop_cell(images[cells[index].page_index], cells[index]), args.scale)
+
     if args.save_crops:
         args.save_crops.mkdir(parents=True, exist_ok=True)
         for cell_id, index in to_send.items():
-            crop_cell(images[cells[index].page_index], cells[index]).save(args.save_crops / f"{cell_id}.png")
+            outgoing(index).save(args.save_crops / f"{cell_id}.png")
 
     gemini: dict[int, str | None] = {}
     seconds_gemini: float | None = None
@@ -424,8 +449,8 @@ def evaluate(args: argparse.Namespace) -> Report:
         if not settings.gemini_api_key:
             raise SystemExit("--send exige GEMINI_API_KEY no .env.")
         started = time.perf_counter()
-        crops = {cell_id: crop_cell(images[cells[i].page_index], cells[i]) for cell_id, i in to_send.items()}
-        answers, calls = ask_gemini(crops, args.model)
+        crops = {cell_id: outgoing(i) for cell_id, i in to_send.items()}
+        answers, calls = ask_gemini(crops, args.model, args.batch)
         seconds_gemini = time.perf_counter() - started
         gemini = {index: answers.get(cell_id) for cell_id, index in to_send.items()}
 
@@ -433,8 +458,9 @@ def evaluate(args: argparse.Namespace) -> Report:
         "local_1_leitura": Outcome(),
         "local_consenso": Outcome(),
         "local_consenso+gemini_celula": Outcome(),
+        "local_consenso+gemini_confirmado": Outcome(),
     }
-    gemini_correct = 0
+    gemini_correct = gemini_null = 0
     found: set[tuple[str, int]] = set()
     for index, cell in enumerate(cells):
         key = (cell.day, cell.slot)
@@ -444,11 +470,16 @@ def evaluate(args: argparse.Namespace) -> Report:
         want = expected[key]
         strategies["local_1_leitura"].add(local_single[index], want)
         strategies["local_consenso"].add(local_consensus[index], want)
-        fallback = local_consensus[index]
+        fallback = confirmed = local_consensus[index]
         if fallback is None and index in gemini:
-            fallback = plausible(gemini[index], cell.weekday, cell.slot, schedule)
-            gemini_correct += gemini[index] == want
+            answer = gemini[index]
+            fallback = plausible(answer, cell.weekday, cell.slot, schedule)
+            # Confirmado: o Gemini só vale se coincidir com alguma leitura local da mesma célula.
+            confirmed = fallback if fallback in (cell.first_read, *cell.rereads) else None
+            gemini_correct += answer == want
+            gemini_null += answer is None
         strategies["local_consenso+gemini_celula"].add(fallback, want)
+        strategies["local_consenso+gemini_confirmado"].add(confirmed, want)
     for outcome in strategies.values():  # horário do gabarito sem célula detectada = revisão
         outcome.review += len(expected) - len(found)
 
@@ -469,6 +500,7 @@ def evaluate(args: argparse.Namespace) -> Report:
         cells_sent=len(to_send) if args.send else 0,
         gemini_calls=calls,
         gemini_correct_on_sent=gemini_correct if args.send else None,
+        gemini_null_on_sent=gemini_null if args.send else None,
         invented_on_days_off=invented,
         schedule_source=schedule_source,
         strategies={name: asdict(outcome) for name, outcome in strategies.items()},
@@ -490,7 +522,7 @@ def format_report(report: Report, sent: bool) -> str:
         f"{'estratégia':32s} {'corretos':>10s} {'revisão':>10s} {'errados sem aviso':>18s}",
     ]
     for name, outcome in report.strategies.items():
-        if name.endswith("gemini_celula") and not sent:
+        if "gemini" in name and not sent:
             continue
         lines.append(
             f"{name:32s} {_pct(outcome['correct'], total):>10s} {_pct(outcome['review'], total):>10s}"
@@ -505,7 +537,8 @@ def format_report(report: Report, sent: bool) -> str:
     if sent:
         lines.append(
             f"Gemini: {report.cells_sent} células em {report.gemini_calls} chamada(s), {report.seconds_gemini} s;"
-            f" corretas: {report.gemini_correct_on_sent}/{report.cells_sent}"
+            f" corretas: {report.gemini_correct_on_sent}/{report.cells_sent}, null: {report.gemini_null_on_sent},"
+            f" erradas: {report.cells_sent - report.gemini_correct_on_sent - report.gemini_null_on_sent}"
         )
     else:
         lines.append("Simulação: nada foi enviado. Use --send para medir o fallback com o Gemini.")
@@ -520,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jornada", help="ex.: 'SEG,QUI=10:00-17:00;TER,QUA,SEX=08:00-15:00'")
     parser.add_argument("--send", action="store_true", help="envia as células aprovadas ao Gemini")
     parser.add_argument("--model", default=settings.gemini_model)
+    parser.add_argument("--batch", type=int, default=GEMINI_BATCH, help="células por chamada ao Gemini")
+    parser.add_argument("--scale", type=int, default=1, help="ampliação do recorte antes do envio (1 = original)")
     parser.add_argument("--save-crops", type=Path, help="grava as células que seriam enviadas")
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 2)
     parser.add_argument("--json", type=Path, help="grava as métricas (só números) em JSON")
