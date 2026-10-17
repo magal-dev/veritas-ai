@@ -65,6 +65,11 @@ export async function updateExtraction(
   return (await response.json()) as JobPreviewResponse
 }
 
+/** Recorte da célula do cartão para conferir um horário; vive só na sessão do backend. */
+export function reviewCropUrl(jobId: string, cropId: string): string {
+  return `/api/v1/jobs/${encodeURIComponent(jobId)}/crops/${encodeURIComponent(cropId)}`
+}
+
 export async function downloadExcel(jobId: string): Promise<Blob> {
   const response = await fetch(`/api/v1/jobs/${jobId}/excel`)
   if (!response.ok) {

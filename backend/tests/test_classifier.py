@@ -12,7 +12,7 @@ from pipeline.classifier import (
     StubDocumentClassifier,
     build_classifier,
 )
-from pipeline.extractor import ExtractionSignals
+from pipeline.extractor import ExtractionSignals, PageSignal
 
 
 def _pdf_bytes(text: str = "holerite INSS") -> bytes:
@@ -238,3 +238,133 @@ def test_gemini_client_config_and_jpeg(mock_client_cls: MagicMock, tmp_path: Pat
     image_part = call.kwargs["contents"][2]
     assert image_part.inline_data.mime_type == "image/jpeg"
     assert image_part.inline_data.data[:2] == b"\xff\xd8"
+
+
+class _FakeReader:
+    """Leitor local que reconhece só as páginas indicadas, com células já relidas."""
+
+    def __init__(self, recognized: dict[int, list]) -> None:
+        self.recognized = recognized
+        self.calls: list[list[int]] = []
+
+    def read(self, pdf_path, page_numbers):
+        from pipeline.time_card_ocr import LocalTimeCards, observed_schedule, resolve_local
+
+        self.calls.append(list(page_numbers))
+        local = LocalTimeCards(
+            pages=[page for number, page in self.recognized.items() if number in page_numbers],
+            unrecognized_pages=[n for n in page_numbers if n not in self.recognized],
+        )
+        cells = [cell for page in local.pages for cell in page.cells]
+        local.schedule = observed_schedule(cells)
+        resolve_local(cells, local.schedule)
+        return local
+
+
+def _time_card_page(page_number: int):
+    from PIL import Image
+
+    from pipeline.time_card_ocr import Cell, Columns, TimeCardPage
+
+    columns = Columns(entry_x=369, exit_x=465, width=76, height=21)
+    cells = []
+    for day in ("2025-07-21", "2025-07-28", "2025-08-04", "2025-08-11"):  # segundas
+        for slot, value in ((0, "10:00"), (1, "17:00")):
+            cell = Cell(day, slot, (369 if slot == 0 else 465, 0, 76, 21), first_read=value)
+            cell.rereads = [value, value]
+            cell.crop = Image.new("L", (84, 29), 0)
+            cell.ink_ratio = 0.3
+            cells.append(cell)
+    doubtful = cells[-1]  # saída de 2025-08-11 sem consenso
+    doubtful.rereads = [None, None]
+    page = TimeCardPage(page_number=page_number, rows=31, columns=columns, cells=cells)
+    page.work_days = sorted({cell.day for cell in cells})
+    return page
+
+
+def _strip_answer(contents: list, value: str | None) -> MagicMock:
+    strips = [
+        (match[1], int(match[2]))
+        for item in contents
+        if isinstance(item, str) and (match := re.fullmatch(r"Faixa (\w+) \((\d+) linhas\):", item))
+    ]
+    response = MagicMock()
+    response.text = json.dumps(
+        {"strips": [{"id": strip_id, "values": [value] * rows} for strip_id, rows in strips]}
+    )
+    return response
+
+
+@patch("pipeline.classifier.genai.Client")
+def test_recognized_scanned_time_card_sends_only_column_strips(mock_client_cls: MagicMock, tmp_path: Path):
+    pdf_path = _multi_page_pdf(tmp_path, 3)
+    reader = _FakeReader({2: _time_card_page(2)})
+
+    def respond(*, contents, **kwargs):
+        if any(isinstance(item, str) and item.startswith("Faixa ") for item in contents):
+            # "17:00" para toda a coluna de saída (a de entrada já está resolvida e não vai).
+            return _strip_answer(contents, "17:00")
+        return _mock_response(
+            [{"page_number": page, "document_type": "IRRELEVANTE", "confidence": 0.9}
+             for page in _pages_in_call(contents)]
+        )
+
+    mock_models = _client_with(mock_client_cls, respond)
+    signals = ExtractionSignals(
+        pdf_page_count=3,
+        candidate_pages=[1, 2, 3],
+        page_signals=[PageSignal(page_number=2, visual=True), PageSignal(page_number=3, visual=True)],
+    )
+    classifier = GeminiDocumentClassifier("test-key", "gemini-3.5-flash-lite", time_card_reader=reader)
+
+    outcome = classifier.classify(pdf_path, signals)
+
+    assert reader.calls == [[2, 3]]  # só as visuais passam pelo OCR local
+    pages_sent = sorted(
+        page for call in mock_models.generate_content.call_args_list for page in _pages_in_call(call.kwargs["contents"])
+    )
+    assert pages_sent == [1, 3]  # a página 2 nunca sai inteira
+    assert outcome.gemini_call_count == 3  # duas de página (ondas diferentes) + uma de faixas
+    assert [(c.page_number, c.document_type.value) for c in outcome.classifications] == [
+        (1, "IRRELEVANTE"), (2, "CARTAO_PONTO"), (3, "IRRELEVANTE"),
+    ]
+    by_day = {entry.date: entry for entry in outcome.time_cards}
+    assert by_day["2025-08-11"].clock_out == "17:00"
+    assert by_day["2025-08-11"].review_crops.keys() == {"clock_out"}
+    assert set(outcome.review_crops) == set(by_day["2025-08-11"].review_crops.values())
+
+
+@patch("pipeline.classifier.genai.Client")
+def test_failed_strip_call_leaves_cells_for_review(mock_client_cls: MagicMock, tmp_path: Path):
+    pdf_path = _multi_page_pdf(tmp_path, 1)
+
+    def respond(**kwargs):
+        raise RuntimeError("api down")
+
+    _client_with(mock_client_cls, respond)
+    signals = ExtractionSignals(
+        pdf_page_count=1, candidate_pages=[1], page_signals=[PageSignal(page_number=1, visual=True)]
+    )
+    classifier = GeminiDocumentClassifier(
+        "test-key", "gemini-3.5-flash-lite", time_card_reader=_FakeReader({1: _time_card_page(1)})
+    )
+
+    outcome = classifier.classify(pdf_path, signals)
+
+    assert outcome.gemini_call_count == 0
+    pending = [entry for entry in outcome.time_cards if entry.ambiguous_fields]
+    assert [(entry.date, entry.clock_out) for entry in pending] == [("2025-08-11", None)]
+
+
+@patch("pipeline.classifier.genai.Client")
+def test_read_strips_batches_calls(mock_client_cls: MagicMock):
+    from pipeline.classifier import STRIPS_PER_CALL
+    from pipeline.time_card_ocr import Strip
+
+    _client_with(mock_client_cls, lambda *, contents, **kwargs: _strip_answer(contents, None))
+    page = _time_card_page(1)
+    strips = [Strip(f"f{index}", page.cells[:2]) for index in range(STRIPS_PER_CALL + 1)]
+    classifier = GeminiDocumentClassifier("test-key", "gemini-3.5-flash-lite")
+
+    assert classifier.read_strips(strips) == 2
+    assert classifier.read_strips([]) == 0

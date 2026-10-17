@@ -35,6 +35,10 @@ class TimeCardEntry(BaseModel):
     confidence: float = Field(ge=0, le=1)
     missing_fields: list[str] = Field(default_factory=list)
     ambiguous_fields: list[str] = Field(default_factory=list)
+    review_crops: dict[str, str] = Field(
+        default_factory=dict,
+        description="campo → id do recorte da célula na sessão (cartão lido por OCR local)",
+    )
 
 
 class PayslipEntry(BaseModel):

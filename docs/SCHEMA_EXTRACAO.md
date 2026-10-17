@@ -37,9 +37,22 @@ O pipeline preenche este schema via triagem local + Gemini nas páginas candidat
 ## `TimeCardEntry` (cartão de ponto)
 
 Campos obrigatórios: `date`, `source_page`, `confidence`.  
-Campos opcionais: `clock_in`, `clock_out`, `break_start`, `break_end`, `competence`, `source_excerpt`.
+Campos opcionais: `clock_in`, `clock_out`, `break_start`, `break_end`, `competence`, `source_excerpt`, `review_crops`.
 
 Horários no formato `HH:mm`. Datas em `YYYY-MM-DD`. Competência em `YYYY-MM`.
+
+`review_crops` (objeto `campo → id`) só aparece em cartão escaneado lido pelo OCR local (`pipeline/time_card_ocr.py`). Aponta o recorte da célula, servido em `GET /api/v1/jobs/{id}/crops/{crop_id}` enquanto a sessão existir, para os horários que não vieram do consenso local (lidos pelo Gemini ou pendentes). Nesse caminho:
+
+| Situação | Registro |
+|---|---|
+| Três leituras locais iguais e perto da jornada observada (±75 min), sem leitura diferente do Gemini | Horário preenchido; `confidence` 0,95 |
+| Lido pelo Gemini na faixa da coluna, perto da jornada | Horário preenchido; `confidence` 0,85 se algum horário do dia veio do Gemini |
+| Qualquer outro caso | Horário vazio (`null`) e listado em `ambiguous_fields`; `confidence` 0,3 |
+| Marcação única ("Esquecimento") não resolvida | `clock_in` e `clock_out` em `ambiguous_fields` |
+| Dia do período sem linha lida pelo OCR | Registro com os horários vazios, ambos em `ambiguous_fields`, `confidence` 0 |
+| Folga, DSR, feriado, "Não Admitido" | Sem registro |
+
+`source_excerpt` fica vazio nesse caminho (nenhum texto é extraído para a sessão).
 
 ## `PayslipEntry` (holerite / ficha financeira)
 

@@ -4,7 +4,7 @@ Extração inteligente de dados processuais para o PJe-Calc — projeto de Traba
 
 Aplicação web para contadores e peritos trabalhistas extraírem, a partir do PDF do processo, dados de cartões de ponto e holerites e exportá-los em planilha para importação no PJe-Calc.
 
-**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão editável dos dados extraídos (correções e resolução de conflitos antes do Excel) e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais e o Gemini faz o OCR só nas candidatas. O layout oficial do PJe-Calc permanece como trabalho futuro.
+**Estado atual:** a triagem em 3 camadas (PyMuPDF + heurísticas locais + Gemini só nas páginas candidatas) está implementada, com revisão editável dos dados extraídos (correções e resolução de conflitos antes do Excel) e geração do `.xlsx`. Páginas escaneadas entram na triagem por sinais visuais locais. Cartão de ponto escaneado de layout reconhecido é lido no próprio servidor (OCR local), e ao Gemini vão só faixas anônimas com os horários duvidosos; as demais candidatas escaneadas vão ao Gemini como página. O layout oficial do PJe-Calc permanece como trabalho futuro.
 
 Leia [AGENTS.md](AGENTS.md) antes de implementar (o [CLAUDE.md](CLAUDE.md) traz o guia operacional para agentes). Contratos: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md) e [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md).
 
@@ -20,8 +20,9 @@ Fluxo de uma requisição: **upload → triagem → extração → validação �
    - Regex de horários (`08:00`) e valores monetários (`3.500,00`): uma página sem palavra-chave mas com muitos padrões (continuação de cartão de ponto) também entra.
 2. **Camada 2 — heurísticas:** sumário do PDF (`get_toc`), vizinhos ±1 com padrão numérico e densidade de texto. A detecção de tabelas do pdfplumber, a operação local mais cara, roda só nas 10 páginas mais bem pontuadas.
 3. **Camada 3 — Gemini:** até 25 páginas candidatas, renderizadas como JPEG em escala de cinza (150 DPI) e enviadas em lotes de 5 páginas por chamada, com as chamadas (no máx. 5) em paralelo (timeout de 90 s, até 3 tentativas em 429/500/503). O modelo classifica a página (`CARTAO_PONTO`, `HOLERITE` ou `IRRELEVANTE`) e devolve JSON com confiança, página de origem e campos ausentes ou ambíguos.
+   - **Cartão de ponto escaneado** (página visual candidata): antes do Gemini, o OCR local (Tesseract) tenta montar a tabela. Se reconhece o layout (período "dd/mm/aaaa à dd/mm/aaaa", colunas Ent/Sai), a página **não sai do servidor**. Cada horário é relido em recorte; três leituras iguais e perto da jornada observada são aceitas. As colunas com horário duvidoso vão ao Gemini como faixas verticais só com as células de horário, em ordem embaralhada e sem data, nome ou cabeçalho (4 faixas por chamada). A leitura do Gemini só vale perto da jornada e, nas células já aceitas localmente, funciona como voto: se discordar, o horário vai para revisão. O que continuar duvidoso fica vazio, marcado para conferência e com o recorte da célula na tela de revisão. Página não reconhecida segue como página inteira.
 4. **Validação** contra o schema Pydantic e regras de formato e coerência. Horários e datas são normalizados quando a leitura é inequívoca (`8h00` → `08:00`). Valores inválidos, pares incompletos e intervalos fora da jornada são sinalizados, e duplicatas entre páginas são removidas. Valores divergentes entre páginas viram conflito para a revisão decidir: o sistema não escolhe nem inventa valor. As regras completas estão em [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md#validação-pipelinevalidatorpy).
-5. **Revisão:** a tela mostra as pendências (páginas não classificadas, campos ausentes ou a conferir, conflitos com as páginas de origem) e destaca registros de baixa confiança ou sinalizados.
+5. **Revisão:** a tela mostra as pendências (páginas não classificadas, campos ausentes ou a conferir, conflitos com as páginas de origem) e destaca registros de baixa confiança ou sinalizados. Horário de cartão lido no servidor que não veio do consenso local mostra o recorte da célula ao lado do campo.
 6. **Excel** gerado sob demanda no download (layout provisório `provisional-0.1`, que **não é** o modelo oficial do PJe-Calc) e apagado logo após o envio.
 
 Em um PDF sintético de 300 páginas, a triagem local (camadas 1 e 2) leva cerca de 0,2 s. Para medir na sua máquina, use `python scripts/benchmark_pipeline.py 300`.
@@ -35,7 +36,9 @@ Fluxo em 4 etapas (upload, processamento, revisão e download), todo em portugu�
 ### Limitações atuais
 
 - **Sem `GEMINI_API_KEY`:** a triagem local roda, mas as candidatas ficam como "não classificadas" e nenhum dado é extraído.
-- **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as envia ao Gemini só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
+- **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as aceita só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
+- **OCR local do cartão de ponto:** reconhece um layout (o medido em folhas reais). Outros layouts, holerites escaneados e cartões com datas que não se confirmam pelas próprias linhas continuam indo ao Gemini como página. Sem o Tesseract instalado (ou com `TIME_CARD_OCR=false`), todo cartão escaneado vai como página. Dia de hora extra fora da jornada observada (±75 min) vai para revisão em vez de ser aceito.
+- Sem `GEMINI_API_KEY`, o OCR local não roda (a extração depende da camada 3).
 - Candidatas além das 5 primeiras não vão ao Gemini; aparecem como pendência na revisão.
 - A revisão permite editar cartões e holerites e salvar na sessão; o Excel só é liberado sem conflitos pendentes.
 
@@ -70,7 +73,7 @@ flowchart TB
     PG[(PostgreSQL — só metadados)]
   end
 
-  GEMINI[[Gemini API — só páginas candidatas]]
+  GEMINI[[Gemini API — páginas candidatas; cartão escaneado só como faixas anônimas]]
 
   UI --> API_CLIENT
   API_CLIENT --> API
@@ -148,7 +151,7 @@ Dados sensíveis do processo **não** passam por `models/`, `repositories/` nem 
 
 ## Stack
 
-React 19 (Vite + TypeScript) · Tailwind 4 + shadcn/ui · FastAPI · PostgreSQL · SQLAlchemy async · Alembic · PyMuPDF · pdfplumber · Gemini (`gemini-3.5-flash-lite` via SDK `google-genai`) · openpyxl
+React 19 (Vite + TypeScript) · Tailwind 4 + shadcn/ui · FastAPI · PostgreSQL · SQLAlchemy async · Alembic · PyMuPDF · pdfplumber · Tesseract (OCR local do cartão escaneado) · Gemini (`gemini-3.5-flash-lite` via SDK `google-genai`) · openpyxl
 
 ## Como rodar
 
@@ -174,6 +177,10 @@ npm run dev -- --host 127.0.0.1 --port 4174
 ```
 
 Abra http://127.0.0.1:4174. A API responde em http://127.0.0.1:8765/health e a documentação OpenAPI em http://127.0.0.1:8765/docs.
+
+### OCR local do cartão de ponto (Tesseract)
+
+Instale o binário do Tesseract com o idioma português: no Windows, o instalador do [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) (marque "Portuguese" em *Additional language data*); no Linux, `apt install tesseract-ocr tesseract-ocr-por`. Se o executável não estiver no `PATH`, aponte `TESSERACT_CMD` no `.env` (ex.: `C:\Program Files\Tesseract-OCR\tesseract.exe`). Sem ele a API sobe normalmente e registra `time_card_ocr.unavailable` no log; os cartões escaneados voltam a ir como página.
 
 ### Configuração do Gemini
 
@@ -212,7 +219,7 @@ python scripts/evaluate_models.py          # compara modelos Gemini com gabarito
 python scripts/evaluate_extraction.py processo.pdf gabarito.json [--json m.json] [--local-only]
                                            # pipeline completo contra gabarito; imprime só métricas
 python scripts/evaluate_cell_fallback.py gabarito.json folha*.jpg [--send] [--save-crops dir/]
-                                           # experimento: OCR local + Gemini só em recortes de célula
+                                           # cartão escaneado: OCR local + faixas anônimas (mesmo código do pipeline)
 
 # Frontend (a partir de frontend/)
 npm run build                              # tsc -b + vite build
@@ -224,7 +231,7 @@ Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do clie
 
 **Avaliação com processos reais.** O formato do gabarito está no topo de `scripts/evaluate_extraction.py`. A saída tem só contagens e porcentagens (recall/precisão da triagem, acurácia da classificação, horários e verbas corretos, itens inventados, chamadas e tempo). PDFs e gabaritos reais contêm dados pessoais: mantenha-os fora do repositório (a pasta `avaliacao-local/` e arquivos `*.gabarito.json` são ignorados pelo git) e apague-os ao terminar.
 
-**Experimento: fallback anônimo por célula.** `scripts/evaluate_cell_fallback.py` mede uma alternativa em que a página nunca sai do servidor: OCR local (Tesseract, dependência só do script) monta o cartão de ponto, e só os horários duvidosos vão ao Gemini, como recorte da célula, com id aleatório e sem data, nome ou cabeçalho. Uma trava barra recortes com letras ou mais de um horário. Sem `--send` nada é enviado; `--save-crops` grava exatamente o que sairia, para inspeção. Foi escrito para um layout de cartão de ponto específico (período "dd/mm/aaaa à dd/mm/aaaa", colunas Ent/Sai) e não faz parte do pipeline.
+**Cartão de ponto escaneado lido no servidor.** `scripts/evaluate_cell_fallback.py` roda o mesmo código do pipeline (`pipeline/time_card_ocr.py` + a chamada de faixas do classificador) contra um gabarito e separa corretos, revisão e errados sem aviso, para o OCR local sozinho e para o pipeline completo (com `--send`). Sem `--send` nada é enviado; `--save-crops` grava exatamente as faixas que sairiam, para inspeção. Aceita as imagens das folhas ou um PDF com `--pages`.
 
 ## Privacidade
 
@@ -232,6 +239,7 @@ Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do clie
 - Nenhum dado extraído do PDF é persistido. O PostgreSQL recebe só metadados operacionais (timestamps, status, contagem de páginas, de candidatas e de chamadas ao Gemini, código de erro), sem nome de arquivo, texto, JSON, CPF ou número de processo.
 - O PDF é apagado ao fim do processamento; o Excel, logo após o download; a sessão em memória expira após `JOB_TTL_SECONDS`.
 - Apenas as páginas candidatas (até 25 por processo) são enviadas como imagem à API do Gemini; o restante do documento não sai do servidor.
+- Cartão de ponto escaneado reconhecido pelo OCR local não é enviado como página: saem só faixas com células de horário, sem data, nome, cabeçalho ou ordem dos dias. O vínculo de cada linha com o dia e os recortes mostrados na revisão ficam só na sessão em memória.
 - Os logs registram só metadados (`job_id`, contagens, duração), nunca conteúdo das páginas.
 - O navegador guarda apenas a preferência de tema (`localStorage`); nenhum dado do processo.
 - Em produção a comunicação deve ser HTTPS; o ambiente local usa HTTP.

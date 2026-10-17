@@ -17,6 +17,8 @@ dependencies = [
   "python-multipart>=0.0.12",
   "pymupdf>=1.24.3",
   "pdfplumber>=0.11.0",
+  # Recortes e pré-processamento do OCR local do cartão (já vinha com o pdfplumber).
+  "pillow>=10.0",
   "google-genai>=1.0.0",
   "openpyxl>=3.1.5",
   "pendulum>=3.0.0",

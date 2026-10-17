@@ -5,7 +5,8 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { fieldList } from '@/lib/fields'
+import { reviewCropUrl } from '@/lib/api'
+import { fieldLabel, fieldList } from '@/lib/fields'
 import { toPageRanges } from '@/lib/pages'
 import {
   applyBaseSalaryChoice,
@@ -66,6 +67,22 @@ type ReviewStepProps = {
   onSave: (body: ExtractionUpdateBody) => Promise<void>
   onContinue: () => void
   onDiscard: () => void
+}
+
+/** Recorte da célula lida no servidor, para conferir o horário sem abrir o PDF. */
+function CellCrop({ jobId, row, field }: { jobId: string; row: TimeCardEntry; field: string }) {
+  const cropId = row.review_crops?.[field]
+  if (!cropId) {
+    return null
+  }
+  return (
+    <img
+      src={reviewCropUrl(jobId, cropId)}
+      alt={`Recorte da célula: ${fieldLabel(field)} em ${row.date}`}
+      className="mt-1 h-7 w-auto rounded border border-rule bg-white p-0.5"
+      loading="lazy"
+    />
+  )
 }
 
 function EmptyRow({ columns, message }: { columns: number; message: string }) {
@@ -424,6 +441,7 @@ export function ReviewStep({
                         }
                         aria-label={`Entrada linha ${index + 1}`}
                       />
+                      <CellCrop jobId={extraction.job_id} row={row} field="clock_in" />
                     </TableCell>
                     <TableCell>
                       <input
@@ -434,6 +452,7 @@ export function ReviewStep({
                         }
                         aria-label={`Saída linha ${index + 1}`}
                       />
+                      <CellCrop jobId={extraction.job_id} row={row} field="clock_out" />
                     </TableCell>
                     <TableCell className="space-y-1">
                       <input

@@ -20,6 +20,8 @@ class JobSession:
     extraction: ExtractionResult | None = None
     error_code: str | None = None
     pipeline_note: str = "Processamento concluído."
+    # Recortes de células do cartão para a revisão (id → PNG); morrem com a sessão.
+    review_crops: dict[str, bytes] = field(default_factory=dict)
     expires_at: datetime = field(init=False)
 
     def __post_init__(self) -> None:
