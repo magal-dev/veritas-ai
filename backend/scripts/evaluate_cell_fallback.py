@@ -88,6 +88,14 @@ um desses pares, ou estiver incompleto, devolva null para aquela célula. Um nul
 melhor que um valor errado: não adivinhe e não complete pelo contexto.
 Responda SOMENTE com JSON: {"cells": [{"id": "<id>", "value": "HH:mm" | null}]}"""
 
+STRIP_PROMPT = """A imagem é uma faixa vertical de uma coluna de tabela impressa por relógio de ponto
+(matricial, às vezes falhado ou borrado). Ela tem exatamente {rows} linhas, cada uma com um horário
+HH:mm. Todas usam a mesma fonte: compare os dígitos entre linhas para ler os apagados.
+Pares que se confundem nessa impressão: 0/8, 3/8, 5/6, 1/7, 0/9. Se um dígito de uma linha puder
+ser um desses pares mesmo após comparar com as outras, ou estiver incompleto, use null nessa linha.
+Um null é muito melhor que um valor errado: não adivinhe e não complete pela sequência.
+Responda SOMENTE com JSON, de cima para baixo, com {rows} itens: {{"values": ["HH:mm" | null, ...]}}"""
+
 
 # ---------------------------------------------------------------- OCR
 
@@ -327,15 +335,7 @@ def ask_gemini(crops: dict[str, Image.Image], model: str, batch_size: int = GEMI
             buffer = io.BytesIO()
             crops[cell_id].save(buffer, "PNG")
             contents += [f"Célula {cell_id}:", types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/png")]
-        for attempt in range(3):  # como no classificador: até 3 tentativas em 429/5xx
-            try:
-                response = client.models.generate_content(model=model, contents=contents, config=config)
-                break
-            except errors.APIError as exc:
-                if attempt == 2 or not (exc.code == 429 or exc.code >= 500):
-                    raise
-                time.sleep(5 * (attempt + 1))
-        payload = json.loads(re.sub(r"^```(?:json)?|```$", "", (response.text or "").strip()))
+        payload = _generate_json(client, model, contents, config, errors)
         return {
             item["id"]: to_time(str(item["value"])) if item.get("value") else None
             for item in payload.get("cells", [])
@@ -350,9 +350,55 @@ def ask_gemini(crops: dict[str, Image.Image], model: str, batch_size: int = GEMI
     return answers, len(batches)
 
 
+def _generate_json(client: Any, model: str, contents: list[Any], config: Any, errors: Any) -> dict[str, Any]:
+    for attempt in range(3):  # como no classificador: até 3 tentativas em 429/5xx
+        try:
+            response = client.models.generate_content(model=model, contents=contents, config=config)
+            break
+        except errors.APIError as exc:
+            if attempt == 2 or not (exc.code == 429 or exc.code >= 500):
+                raise
+            time.sleep(5 * (attempt + 1))
+    return json.loads(re.sub(r"^```(?:json)?|```$", "", (response.text or "").strip()))
+
+
+def ask_gemini_strips(strips: dict[str, tuple[Image.Image, int]], model: str) -> tuple[dict[str, list[str | None]], int]:
+    """Uma chamada por faixa; resposta com número de linhas diferente do enviado é descartada."""
+    from google import genai
+    from google.genai import errors, types
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
+
+    def call(strip_id: str) -> tuple[str, list[str | None]]:
+        image, rows = strips[strip_id]
+        buffer = io.BytesIO()
+        image.save(buffer, "PNG")
+        contents = [STRIP_PROMPT.format(rows=rows),
+                    types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/png")]
+        values = _generate_json(client, model, contents, config, errors).get("values", [])
+        if len(values) != rows:
+            return strip_id, [None] * rows
+        return strip_id, [to_time(str(v)) if v else None for v in values]
+
+    with ThreadPoolExecutor(min(len(strips), 5) or 1) as pool:  # 5 req/min na cota gratuita dos Flash
+        return dict(pool.map(call, list(strips))), len(strips)
+
+
 def prepare_for_send(crop: Image.Image, scale: int) -> Image.Image:
     """Só amplia o recorte já aprovado pela trava; o conteúdo é o mesmo."""
     return crop if scale <= 1 else crop.resize((crop.width * scale, crop.height * scale), Image.LANCZOS)
+
+
+def stack_strip(crops: list[Image.Image], gap: int = 8) -> Image.Image:
+    """Empilha células da mesma coluna numa faixa vertical, sem datas, nomes ou cabeçalho."""
+    width = max(c.width for c in crops)
+    strip = Image.new("L", (width, sum(c.height for c in crops) + gap * (len(crops) - 1)), 255)
+    y = 0
+    for crop in crops:
+        strip.paste(crop.convert("L"), (0, y))
+        y += crop.height + gap
+    return strip
 
 
 # ---------------------------------------------------------------- avaliação
@@ -384,6 +430,9 @@ class Report:
     cells_doubtful: int
     cells_blocked_by_gate: int
     cells_sent: int
+    mode: str
+    images_out: int
+    cells_in_images: int
     gemini_calls: int
     gemini_correct_on_sent: int | None
     gemini_null_on_sent: int | None
@@ -429,18 +478,41 @@ def evaluate(args: argparse.Namespace) -> Report:
         if local_consensus[index] is None:
             doubtful.append(index)
 
-    gate_ok = list(ThreadPoolExecutor(args.workers).map(lambda i: cell_gate(images[cells[i].page_index], cells[i]),
-                                                        doubtful))
-    to_send = {f"c{secrets.token_hex(3)}": i for i, ok in zip(doubtful, gate_ok) if ok}
+    if args.mode == "coluna":  # a trava roda em toda célula, pois as seguras também entram na faixa
+        gated = set(i for i, ok in zip(range(len(cells)), ThreadPoolExecutor(args.workers).map(
+            lambda i: cell_gate(images[cells[i].page_index], cells[i]), range(len(cells)))) if ok)
+    else:
+        gated = set(i for i, ok in zip(doubtful, ThreadPoolExecutor(args.workers).map(
+            lambda i: cell_gate(images[cells[i].page_index], cells[i]), doubtful)) if ok)
+    to_send = {f"c{secrets.token_hex(3)}": i for i in doubtful if i in gated}
+    strips: dict[str, list[int]] = {}
+    if args.mode == "coluna":
+        columns: dict[tuple[int, int], list[int]] = {}
+        for index in sorted(gated):
+            columns.setdefault((cells[index].page_index, cells[index].slot), []).append(index)
+        doubtful_set = set(doubtful)
+        for members in columns.values():
+            if doubtful_set.intersection(members):
+                random.shuffle(members)  # a ordem das linhas não revela a sequência dos dias
+                strips[f"s{secrets.token_hex(3)}"] = members
+        in_strips = {i for members in strips.values() for i in members}
+        to_send = {cell_id: i for cell_id, i in to_send.items() if i in in_strips}
     seconds_local = time.perf_counter() - started
 
     def outgoing(index: int) -> Image.Image:
         return prepare_for_send(crop_cell(images[cells[index].page_index], cells[index]), args.scale)
 
+    def outgoing_strip(members: list[int]) -> Image.Image:
+        return stack_strip([outgoing(i) for i in members])
+
     if args.save_crops:
         args.save_crops.mkdir(parents=True, exist_ok=True)
-        for cell_id, index in to_send.items():
-            outgoing(index).save(args.save_crops / f"{cell_id}.png")
+        if args.mode == "coluna":
+            for strip_id, members in strips.items():
+                outgoing_strip(members).save(args.save_crops / f"{strip_id}.png")
+        else:
+            for cell_id, index in to_send.items():
+                outgoing(index).save(args.save_crops / f"{cell_id}.png")
 
     gemini: dict[int, str | None] = {}
     seconds_gemini: float | None = None
@@ -449,10 +521,16 @@ def evaluate(args: argparse.Namespace) -> Report:
         if not settings.gemini_api_key:
             raise SystemExit("--send exige GEMINI_API_KEY no .env.")
         started = time.perf_counter()
-        crops = {cell_id: outgoing(i) for cell_id, i in to_send.items()}
-        answers, calls = ask_gemini(crops, args.model, args.batch)
+        if args.mode == "coluna":
+            payload = {sid: (outgoing_strip(members), len(members)) for sid, members in strips.items()}
+            strip_answers, calls = ask_gemini_strips(payload, args.model)
+            read = {i: v for sid, members in strips.items() for i, v in zip(members, strip_answers[sid])}
+            gemini = {index: read.get(index) for index in to_send.values()}
+        else:
+            crops = {cell_id: outgoing(i) for cell_id, i in to_send.items()}
+            answers, calls = ask_gemini(crops, args.model, args.batch)
+            gemini = {index: answers.get(cell_id) for cell_id, index in to_send.items()}
         seconds_gemini = time.perf_counter() - started
-        gemini = {index: answers.get(cell_id) for cell_id, index in to_send.items()}
 
     strategies = {
         "local_1_leitura": Outcome(),
@@ -498,6 +576,9 @@ def evaluate(args: argparse.Namespace) -> Report:
         cells_doubtful=len(doubtful),
         cells_blocked_by_gate=len(doubtful) - len(to_send),
         cells_sent=len(to_send) if args.send else 0,
+        mode=args.mode,
+        images_out=len(strips) if args.mode == "coluna" else len(to_send),
+        cells_in_images=sum(len(m) for m in strips.values()) if args.mode == "coluna" else len(to_send),
         gemini_calls=calls,
         gemini_correct_on_sent=gemini_correct if args.send else None,
         gemini_null_on_sent=gemini_null if args.send else None,
@@ -532,6 +613,7 @@ def format_report(report: Report, sent: bool) -> str:
         "",
         f"Células duvidosas: {report.cells_doubtful}  |  barradas pela trava: {report.cells_blocked_by_gate}"
         f"  |  aptas a enviar: {report.cells_doubtful - report.cells_blocked_by_gate}",
+        f"Modo {report.mode}: {report.images_out} imagem(ns) com {report.cells_in_images} horário(s) no total",
         f"Horários extraídos em dias sem jornada no gabarito: {report.invented_on_days_off}",
     ]
     if sent:
@@ -553,6 +635,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jornada", help="ex.: 'SEG,QUI=10:00-17:00;TER,QUA,SEX=08:00-15:00'")
     parser.add_argument("--send", action="store_true", help="envia as células aprovadas ao Gemini")
     parser.add_argument("--model", default=settings.gemini_model)
+    parser.add_argument("--mode", choices=["celula", "coluna"], default="celula",
+                        help="celula: um recorte por horário; coluna: faixa com as células da coluna")
     parser.add_argument("--batch", type=int, default=GEMINI_BATCH, help="células por chamada ao Gemini")
     parser.add_argument("--scale", type=int, default=1, help="ampliação do recorte antes do envio (1 = original)")
     parser.add_argument("--save-crops", type=Path, help="grava as células que seriam enviadas")
