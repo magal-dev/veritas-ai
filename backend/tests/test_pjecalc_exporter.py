@@ -163,6 +163,22 @@ def test_base_salary_becomes_its_own_history():
     assert export.summary.skipped_payslips == 1
 
 
+def test_base_salary_is_not_duplicated_when_extracted_as_item():
+    extraction = ExtractionResult(
+        job_id=uuid4(),
+        payslips=[
+            _payslip("2022-01", "Salário base", 1850.0, base_salary=1850.0),
+            _payslip("2022-01", "Horas extras", 300.0, base_salary=1850.0),
+        ],
+    )
+    files = PjeCalcExporter().build(extraction).files
+    assert sorted(files) == [
+        README_FILENAME,
+        "historico_salarial_01_horas_extras.csv",
+        "historico_salarial_02_salario_base.csv",
+    ]
+
+
 def test_zip_contains_all_files():
     extraction = ExtractionResult(
         job_id=uuid4(),

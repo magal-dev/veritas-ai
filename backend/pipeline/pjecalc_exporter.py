@@ -183,7 +183,9 @@ def build_historico_csvs(
         values[competence] = values.get(competence, 0.0) + entry.amount
 
     ordered = sorted(groups.values(), key=lambda item: _normalize_label(item[0]))
-    if base_salaries and _normalize_label(BASE_SALARY_LABEL) not in groups:
+    # Compara pelo slug para "Salário base", "salario-base" e "SALÁRIO BASE" contarem
+    # como a mesma verba: o holerite costuma trazer o salário-base também como linha.
+    if base_salaries and _slug(BASE_SALARY_LABEL) not in {_slug(label) for label, _ in ordered}:
         ordered.insert(0, (BASE_SALARY_LABEL, base_salaries))
 
     files: dict[str, bytes] = {}
