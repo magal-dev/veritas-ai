@@ -40,7 +40,7 @@ const FLAG_LABEL = {
 
 const DISCARDED = [
   { item: 'PDF do processo', when: 'apagado ao fim da triagem' },
-  { item: 'Planilha', when: 'apagada do servidor após o download' },
+  { item: 'Arquivos do PJe-Calc', when: 'apagados do servidor após o download' },
   { item: 'Tabela revisada', when: 'some quando a sessão expira (15 min) ou é encerrada' },
 ]
 
@@ -161,7 +161,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
           <BrandBar />
 
           <h1 className="max-w-4xl animate-rise font-display text-[40px] leading-[1.04] tracking-[-0.02em] [animation-delay:250ms] sm:text-[60px] lg:text-[76px]">
-            Do PDF do processo para uma planilha de ponto e holerites.
+            Do PDF do processo para os arquivos de ponto e holerites do PJe-Calc.
           </h1>
 
           <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
@@ -249,7 +249,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             <Reveal className="flex flex-col gap-3 lg:col-span-3 lg:col-start-2">
               <StepLabel n="04">Download</StepLabel>
               <p className="text-[15px] leading-relaxed text-ink-muted">
-                <span className="text-ink">Você baixa o .xlsx.</span> Depois disso, o que veio do
+                <span className="text-ink">Você baixa os CSVs do PJe-Calc.</span> Depois disso, o que veio do
                 processo deixa o servidor.
               </p>
             </Reveal>
@@ -302,9 +302,9 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             </div>
             <aside className="border-l-2 border-accent/60 pl-4 text-[13px] leading-relaxed text-ink-muted lg:col-span-5 lg:col-start-8">
               <span className="font-medium text-ink">Limites.</span> A leitura pode errar; por
-              isso a conferência existe. A planilha segue o layout{' '}
-              <code className="text-ink">provisional-0.1</code>, uma hipótese de trabalho, não o
-              modelo oficial do PJe-Calc. Revise antes de importar.
+              isso a conferência existe. Os CSVs seguem a importação do PJe-Calc Cidadão 2.16
+              (jornada do cartão de ponto e histórico salarial). Revise antes e depois de
+              importar.
             </aside>
           </Reveal>
         </section>

@@ -15,8 +15,8 @@ from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
 from pipeline.classifier import build_classifier
-from pipeline.excel_builder import ProvisionalExcelBuilder
 from pipeline.extractor import LocalDocumentExtractor
+from pipeline.pjecalc_exporter import PjeCalcExporter
 from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
 from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
@@ -39,7 +39,7 @@ class JobService:
             model_name=settings.gemini_model,
         )
         self._validator = SchemaExtractionValidator()
-        self._excel = ProvisionalExcelBuilder()
+        self._exporter = PjeCalcExporter()
 
     async def create_from_upload(self, upload: UploadFile) -> JobSession:
         self._assert_pdf(upload)
@@ -168,10 +168,10 @@ class JobService:
         )
         return validated
 
-    def build_excel(self, session: JobSession) -> bytes:
+    def build_export(self, session: JobSession) -> bytes:
         if session.extraction is None:
             raise InvalidPdfError("EXTRACTION_MISSING")
-        return self._excel.build(session.extraction)
+        return self._exporter.build_zip(session.extraction)
 
     async def discard(self, job_id: uuid.UUID) -> bool:
         removed = session_store.delete(job_id)

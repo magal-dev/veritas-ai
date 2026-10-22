@@ -65,8 +65,8 @@ export async function updateExtraction(
   return (await response.json()) as JobPreviewResponse
 }
 
-export async function downloadExcel(jobId: string): Promise<Blob> {
-  const response = await fetch(`/api/v1/jobs/${jobId}/excel`)
+export async function downloadExport(jobId: string): Promise<Blob> {
+  const response = await fetch(`/api/v1/jobs/${jobId}/export`)
   if (!response.ok) {
     throw await parseError(response)
   }

@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
+import zipfile
 from io import BytesIO
 from uuid import uuid4
 
 import pymupdf as fitz
 from fastapi.testclient import TestClient
-from openpyxl import load_workbook
 
 from main import app
 from pipeline.extractor import LocalDocumentExtractor
@@ -64,11 +64,10 @@ def test_job_flow_counts_pages_and_returns_empty_extraction(tmp_path):
     assert extraction["payslips"] == []
     assert extraction["gemini_call_count"] == 0
 
-    excel = client.get(f"/api/v1/jobs/{job_id}/excel")
-    assert excel.status_code == 200
-    assert excel.headers["content-type"].startswith(
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    export = client.get(f"/api/v1/jobs/{job_id}/export")
+    assert export.status_code == 200
+    assert export.headers["content-type"] == "application/zip"
+    assert zipfile.ZipFile(BytesIO(export.content)).namelist() == ["LEIA-ME.txt"]
 
     discarded = client.delete(f"/api/v1/jobs/{job_id}")
     assert discarded.status_code == 204
@@ -136,7 +135,7 @@ def test_patch_extraction_normalizes_time():
     assert card["confidence"] == 0.8
 
 
-def test_patch_resolves_conflict_and_excel_has_single_row():
+def test_patch_resolves_conflict_and_export_has_single_day():
     job_id = uuid4()
     extraction = ExtractionResult(
         job_id=job_id,
@@ -181,7 +180,7 @@ def test_patch_resolves_conflict_and_excel_has_single_row():
     _seed_session(extraction)
 
     client = TestClient(app)
-    blocked = client.get(f"/api/v1/jobs/{job_id}/excel")
+    blocked = client.get(f"/api/v1/jobs/{job_id}/export")
     assert blocked.status_code == 409
     assert blocked.json()["detail"]["error_code"] == "CONFLICTS_UNRESOLVED"
 
@@ -208,12 +207,11 @@ def test_patch_resolves_conflict_and_excel_has_single_row():
     assert response.status_code == 200
     assert response.json()["extraction"]["conflicts"] == []
 
-    excel = client.get(f"/api/v1/jobs/{job_id}/excel")
-    assert excel.status_code == 200
-    workbook = load_workbook(BytesIO(excel.content))
-    sheet = workbook["CartaoPonto"]
-    data_rows = [row for row in sheet.iter_rows(min_row=2, values_only=True) if row[1]]
-    assert len(data_rows) == 1
+    export = client.get(f"/api/v1/jobs/{job_id}/export")
+    assert export.status_code == 200
+    jornada = zipfile.ZipFile(BytesIO(export.content)).read("cartao_ponto_jornada.csv")
+    data_rows = jornada.decode("iso-8859-1").split("\r\n")[1:]
+    assert data_rows == ["04/03/2024;08:00;17:00;;;;;;;;;;"]
 
 
 def test_patch_keeps_gemini_conflict_until_acknowledged():
@@ -235,14 +233,14 @@ def test_patch_keeps_gemini_conflict_until_acknowledged():
     assert [item["field"] for item in kept.json()["extraction"]["conflicts"]] == [
         "salario_contratual"
     ]
-    assert client.get(f"/api/v1/jobs/{job_id}/excel").status_code == 409
+    assert client.get(f"/api/v1/jobs/{job_id}/export").status_code == 409
 
     acknowledged = client.patch(
         f"/api/v1/jobs/{job_id}/extraction",
         json={"time_cards": [], "payslips": []},
     )
     assert acknowledged.json()["extraction"]["conflicts"] == []
-    assert client.get(f"/api/v1/jobs/{job_id}/excel").status_code == 200
+    assert client.get(f"/api/v1/jobs/{job_id}/export").status_code == 200
 
 
 def test_patch_ignores_resent_derived_conflict():
