@@ -8,7 +8,7 @@ import { ProcessingStep } from '@/components/ProcessingStep'
 import { ReviewStep } from '@/components/ReviewStep'
 import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
-import { createJob, discardJob, downloadExcel, getPreview, updateExtraction } from '@/lib/api'
+import { createJob, discardJob, downloadExport, getPreview, updateExtraction } from '@/lib/api'
 import type { ApiError, ExtractionResult, ExtractionUpdateBody } from '@/lib/types'
 
 type View = 'home' | 'flow'
@@ -128,11 +128,11 @@ export default function App() {
     setBusy(true)
     setError(null)
     try {
-      const blob = await downloadExcel(session.jobId)
+      const blob = await downloadExport(session.jobId)
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = 'veritas-pjecalc-provisorio.xlsx'
+      anchor.download = 'veritas-pjecalc.zip'
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()

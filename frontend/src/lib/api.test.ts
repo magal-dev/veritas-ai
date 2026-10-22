@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { discardJob, getPreview, updateExtraction } from '@/lib/api'
+import { discardJob, downloadExport, getPreview, updateExtraction } from '@/lib/api'
 
 function mockFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -46,6 +46,13 @@ describe('rotas', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
+  })
+
+  it('baixa o .zip de importação do PJe-Calc', async () => {
+    const fetchMock = mockFetch(new Response('zip', { status: 200 }))
+    const blob = await downloadExport('abc')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/jobs/abc/export')
+    expect(await blob.text()).toBe('zip')
   })
 
   it('descartar sessão já expirada (404) não é erro', async () => {

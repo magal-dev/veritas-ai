@@ -66,7 +66,7 @@ Valores monetários em `decimal` (string ou number), sempre com duas casas na ex
 - Campo não encontrado: omitir o valor e listar o nome em `missing_fields`.
 - Campo ambíguo: manter o valor de maior confiança e listar em `ambiguous_fields`.
 - Conflito entre documentos: registrar em `conflicts` sem escolher automaticamente; a revisão humana na sessão decide (escolher uma página/valor ou igualar campos na tabela e salvar via `PATCH /api/v1/jobs/{id}/extraction`).
-- Confiança abaixo de `0.5`: o registro pode ir ao Excel, mas a UI de revisão deve destacá-lo.
+- Confiança abaixo de `0.5`: o registro pode ir à exportação, mas a UI de revisão deve destacá-lo.
 
 ## Validação (`pipeline/validator.py`)
 
@@ -98,8 +98,8 @@ Depois da validação inicial, o perito pode corrigir `time_cards` e `payslips` 
 - Só as linhas editadas ficam com `confidence = 1` e perdem as pendências dos campos tocados (editar um horário limpa os quatro, porque pares e ordem da jornada dependem de todos). O validador volta a sinalizar o que continuar fora do formato ou incoerente. As demais linhas mantêm a confiança do Gemini.
 - `missing_fields` e `ambiguous_fields` do resultado são refeitos a partir dos registros; pendências só de página (sem registro) não sobrevivem ao salvamento.
 
-O download do Excel (`GET /excel`) responde `409` com `CONFLICTS_UNRESOLVED` enquanto restar qualquer conflito na sessão.
+O download dos CSVs (`GET /export`) responde `409` com `CONFLICTS_UNRESOLVED` enquanto restar qualquer conflito na sessão.
 
 ## O que este schema não é
 
-Não é o layout oficial do PJe-Calc. A planilha de saída é um mapeamento **provisório** descrito em [PJE_CALC_LAYOUT.md](PJE_CALC_LAYOUT.md).
+Não é o formato que o PJe-Calc importa. O mapeamento para os CSVs de importação está em [PJE_CALC_LAYOUT.md](PJE_CALC_LAYOUT.md).
