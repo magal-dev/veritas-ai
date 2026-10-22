@@ -15,8 +15,8 @@ from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
 from pipeline.classifier import build_classifier
-from pipeline.excel_builder import ProvisionalExcelBuilder
 from pipeline.extractor import LocalDocumentExtractor
+from pipeline.pjecalc_exporter import PjeCalcExporter
 from pipeline.time_card_ocr import build_time_card_reader
 from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
@@ -41,7 +41,7 @@ class JobService:
             time_card_reader=build_time_card_reader(settings.time_card_ocr, settings.tesseract_cmd),
         )
         self._validator = SchemaExtractionValidator()
-        self._excel = ProvisionalExcelBuilder()
+        self._exporter = PjeCalcExporter()
 
     async def create_from_upload(self, upload: UploadFile) -> JobSession:
         self._assert_pdf(upload)
@@ -175,10 +175,10 @@ class JobService:
         session = session_store.get(job_id)
         return None if session is None else session.review_crops.get(crop_id)
 
-    def build_excel(self, session: JobSession) -> bytes:
+    def build_export(self, session: JobSession) -> bytes:
         if session.extraction is None:
             raise InvalidPdfError("EXTRACTION_MISSING")
-        return self._excel.build(session.extraction)
+        return self._exporter.build_zip(session.extraction)
 
     async def discard(self, job_id: uuid.UUID) -> bool:
         removed = session_store.delete(job_id)

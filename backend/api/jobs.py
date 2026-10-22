@@ -64,7 +64,7 @@ async def create_job(
         pdf_page_count=page_count,
         message=(
             "PDF processado e descartado do servidor. "
-            "Revise os dados extraídos antes de baixar o Excel."
+            "Revise os dados extraídos antes de baixar os arquivos do PJe-Calc."
         ),
     )
 
@@ -136,8 +136,8 @@ async def update_job_extraction(
     return JobPreviewResponse(job_id=session.job_id, status=session.status, extraction=updated)
 
 
-@router.get("/{job_id}/excel")
-async def download_excel(
+@router.get("/{job_id}/export")
+async def download_export(
     job_id: UUID,
     service: JobService = Depends(get_job_service),
 ) -> Response:
@@ -147,7 +147,7 @@ async def download_excel(
             status_code=409,
             detail={
                 "error_code": "NOT_READY",
-                "message": "A planilha só é gerada após o processamento da sessão.",
+                "message": "Os arquivos só são gerados após o processamento da sessão.",
             },
         )
     if session.extraction.conflicts:
@@ -155,15 +155,15 @@ async def download_excel(
             status_code=409,
             detail={
                 "error_code": "CONFLICTS_UNRESOLVED",
-                "message": "Resolva os conflitos na revisão antes de gerar o Excel.",
+                "message": "Resolva os conflitos na revisão antes de gerar os arquivos.",
             },
         )
-    payload = service.build_excel(session)
+    payload = service.build_export(session)
     return Response(
         content=payload,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type="application/zip",
         headers={
-            "Content-Disposition": 'attachment; filename="veritas-pjecalc-provisorio.xlsx"',
+            "Content-Disposition": 'attachment; filename="veritas-pjecalc.zip"',
             "Cache-Control": "no-store",
         },
     )

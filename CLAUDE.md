@@ -8,7 +8,7 @@ Guia operacional para o Claude Code. A fonte de verdade de produto, stack, priva
 
 ## Resumo rápido
 
-TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera um `.xlsx` provisório para o PJe-Calc. Páginas escaneadas são pontuadas localmente por sinais visuais e ocupam só as vagas restantes. Cartão de ponto escaneado de layout reconhecido é lido por OCR local (Tesseract) e só faixas anônimas de horários duvidosos vão ao Gemini; as demais escaneadas vão como página (o Gemini faz o OCR). Nada processual é persistido.
+TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera os CSVs de importação do PJe-Calc 2.16 (em um `.zip`). Páginas escaneadas são pontuadas localmente por sinais visuais e ocupam só as vagas restantes. Cartão de ponto escaneado de layout reconhecido é lido por OCR local (Tesseract) e só faixas anônimas de horários duvidosos vão ao Gemini; as demais escaneadas vão como página (o Gemini faz o OCR). Nada processual é persistido.
 
 - Backend: `backend/` (FastAPI, Python ≥ 3.11). Imports absolutos a partir de `backend/` (`from core.config import settings`), pois `pythonpath = ["."]`.
 - Frontend: `frontend/` (Vite + React 19 + TypeScript + Tailwind 4 + shadcn/ui).
@@ -54,7 +54,7 @@ npm test                                 # vitest (lógica de revisão e cliente
 5. `finally`: fecha o upload e apaga o PDF.
 6. Sessão vai para `services/session_store.py` (in-memory, TTL `JOB_TTL_SECONDS`), com os recortes de célula da revisão em `review_crops`; `ProcessingRun` recebe só metadados (falha de banco é tolerada).
 
-O Excel (`pipeline/excel_builder.py`) é gerado sob demanda em `GET /jobs/{id}/excel` e descartado após o stream.
+Os CSVs do PJe-Calc (`pipeline/pjecalc_exporter.py`) são gerados em memória sob demanda em `GET /jobs/{id}/export`, como `.zip`.
 
 Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `EMPTY_FILE`, `GEMINI_ERROR`, `PIPELINE_ERROR`, `EXTRACTION_MISSING`). O frontend depende deles, então não renomeie sem atualizar `frontend/src/lib/api.ts` e os componentes.
 
@@ -62,12 +62,12 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 | Mudança | Arquivos |
 |---|---|
-| Novo campo extraído | `docs/SCHEMA_EXTRACAO.md`, `schemas/extraction.py`, prompt em `pipeline/classifier.py`, `pipeline/validator.py`, `pipeline/excel_builder.py` + `docs/PJE_CALC_LAYOUT.md`, `frontend/src/lib/types.ts`, testes |
+| Novo campo extraído | `docs/SCHEMA_EXTRACAO.md`, `schemas/extraction.py`, prompt em `pipeline/classifier.py`, `pipeline/validator.py`, `pipeline/pjecalc_exporter.py` + `docs/PJE_CALC_LAYOUT.md` (se o PJe-Calc importar o campo), `frontend/src/lib/types.ts`, testes |
 | Palavras-chave, TOC, densidade | `pipeline/extractor.py`, `tests/test_extractor.py` |
 | Prompt, parsing ou limite de chamadas do Gemini | `pipeline/classifier.py`, `tests/test_classifier.py` |
 | OCR local do cartão escaneado (layout, trava, faixas) | `pipeline/time_card_ocr.py`, `tests/test_time_card_ocr.py`; medir com `scripts/evaluate_cell_fallback.py` |
 | Regras de validação, duplicatas e conflitos | `pipeline/validator.py`, `tests/test_validator.py`, seção "Validação" de `docs/SCHEMA_EXTRACAO.md` |
-| Colunas/abas do Excel | `pipeline/excel_builder.py` + `docs/PJE_CALC_LAYOUT.md` juntos, `tests/test_excel_builder.py` |
+| CSVs de importação do PJe-Calc | `pipeline/pjecalc_exporter.py` + `docs/PJE_CALC_LAYOUT.md` juntos (leiaute em `docs/PJE_CALC_IMPORTACAO.md`), `tests/test_pjecalc_exporter.py` |
 | Rota ou resposta da API | `api/jobs.py`, `schemas/jobs.py`, `services/job_service.py`, `frontend/src/lib/api.ts`, `tests/test_jobs_api.py` |
 | Nova variável de ambiente | `core/config.py` + `.env.example` |
 | Metadado operacional no banco | `models/processing_run.py`, nova migration em `alembic/versions/`, `repositories/processing_run_repository.py` (nunca conteúdo processual) |
@@ -96,6 +96,6 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 1. `pytest` verde em `backend/`.
 2. Se tocou no frontend: `npm run build`, `npm run lint` e `npm test` em `frontend/`.
-3. Se mudou algum contrato (JSON, Excel, API), atualize o doc correspondente em `docs/` e os tipos do frontend.
+3. Se mudou algum contrato (JSON, CSVs do PJe-Calc, API), atualize o doc correspondente em `docs/` e os tipos do frontend.
 4. Se concluiu um item do TODO, marque-o na seção 8 do `AGENTS.md`.
 5. Revise se algum dado processual passou a ser logado, persistido ou retido além da sessão.

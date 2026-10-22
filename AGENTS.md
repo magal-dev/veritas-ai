@@ -8,9 +8,9 @@ Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar cód
 
 **Contexto acadêmico (TCC):** Extração Inteligente de Dados Processuais para PJe-Calc
 
-Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera planilha para importação no PJe-Calc. Depois do download, descarta tudo.
+Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera os arquivos CSV que o PJe-Calc importa. Depois do download, descarta tudo.
 
-Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local; cartão de ponto escaneado lido por OCR local com só faixas anônimas ao Gemini; demais escaneadas com OCR pelo Gemini), com revisão editável antes do Excel. Layout oficial do PJe-Calc e deploy HTTPS permanecem trabalho futuro.
+Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local; cartão de ponto escaneado lido por OCR local com só faixas anônimas ao Gemini; demais escaneadas com OCR pelo Gemini), com revisão editável antes da exportação para o PJe-Calc (CSVs de importação da versão 2.16). Deploy HTTPS permanece trabalho futuro.
 
 ## 2. Mapa de pastas
 
@@ -22,7 +22,8 @@ Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini
 ├── docker-compose.yml        ← Postgres local (só metadados)
 ├── docs/
 │   ├── SCHEMA_EXTRACAO.md    ← contrato JSON in-memory
-│   └── PJE_CALC_LAYOUT.md    ← Excel provisório (HIPÓTESE, não é o layout oficial)
+│   ├── PJE_CALC_LAYOUT.md    ← mapeamento extração → CSVs de importação do PJe-Calc
+│   └── PJE_CALC_IMPORTACAO.md ← leiaute das importações do PJe-Calc 2.16 (lido da instalação)
 ├── backend/
 │   ├── main.py               ← app FastAPI
 │   ├── core/                 ← config, database, logging
@@ -32,7 +33,7 @@ Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini
 │   │   ├── classifier.py     ← Camada 3 Gemini (só páginas candidatas)
 │   │   ├── time_card_ocr.py  ← Camada 3, cartão escaneado: OCR local + faixas anônimas
 │   │   ├── validator.py      ← regras + schema Pydantic
-│   │   └── excel_builder.py  ← openpyxl, layout provisional-0.1
+│   │   └── pjecalc_exporter.py ← CSVs de importação do PJe-Calc (.zip em memória)
 │   ├── models/               ← SQLAlchemy (ProcessingRun apenas)
 │   ├── repositories/         ← acesso ao PostgreSQL
 │   ├── services/             ← orquestra pipeline + sessão in-memory
@@ -57,7 +58,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |
 | Banco | PostgreSQL (Neon em nuvem; Compose na máquina local) |
-| Excel | openpyxl |
+| Exportação | CSV + zip da biblioteca padrão (o PJe-Calc não importa `.xlsx`; openpyxl foi removido) |
 | Datas | pendulum + `datetime` nativo |
 
 TypeScript no frontend é tipagem sobre React, não troca de stack. Não introduza Next.js, Celery, Redis, outro LLM ou outro banco.
@@ -81,7 +82,7 @@ PDF bruto
   → cartão escaneado reconhecido: OCR local + faixas anônimas ao Gemini
   → classificação e extração Gemini (demais páginas candidatas)
   → validação
-  → Excel (openpyxl)
+  → CSVs de importação do PJe-Calc (.zip)
   → download no React
   → descarte imediato
 ```
@@ -94,7 +95,7 @@ Decisão de arquitetura, não detalhe de implementação. Processos trabalhistas
 
 **Não existem:** contas de usuário, histórico de extrações, armazenamento persistente de dados processuais.
 
-Fluxo de dados: Upload PDF → processamento em memória → download Excel → descarte.
+Fluxo de dados: Upload PDF → processamento em memória → download dos CSVs → descarte.
 
 Regras obrigatórias:
 
@@ -102,7 +103,7 @@ Regras obrigatórias:
 - Cartão de ponto escaneado reconhecido não sai do servidor como página. Ao Gemini vão só faixas de células de horário que passaram pela trava (tamanho de célula da coluna, com tinta, sem palavras), embaralhadas, sem data, nome ou cabeçalho. O vínculo linha → dia e os recortes da revisão ficam só na sessão (`JobSession.review_crops`).
 - PostgreSQL só recebe metadados operacionais: timestamps, status, `pdf_page_count`, `candidate_page_count`, `gemini_call_count`, `error_code`. Sem nome de arquivo, hash de conteúdo, JSON, trechos, CPF, número de processo.
 - O PDF é apagado no `finally` imediatamente após o processamento (triagem + Gemini).
-- O Excel é apagado imediatamente após o stream de download.
+- O .zip de exportação é montado em memória a cada download e nunca é gravado.
 - Sem autenticação, cadastro ou histórico neste TCC.
 - Produção deve ser HTTPS. Dev local é HTTP.
 
@@ -146,22 +147,22 @@ Definição canônica: [docs/SCHEMA_EXTRACAO.md](docs/SCHEMA_EXTRACAO.md). Códi
 
 Todo registro precisa de confiança, página de origem e, quando possível, trecho fonte (só na sessão). Marcar campos ausentes, ambíguos e conflitantes. Fallback: não inventar valor; listar em `missing_fields`.
 
-Excel: [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md). `LAYOUT_VERSION = provisional-0.1`. **Não é o layout oficial do PJe-Calc.** Não apresente essas colunas como norma. Quando houver modelo oficial, substitua builder + doc juntos.
+Exportação: [docs/PJE_CALC_LAYOUT.md](docs/PJE_CALC_LAYOUT.md), `LAYOUT_VERSION = pjecalc-2.16-csv-1`. O leiaute vem da leitura dos parsers e modelos do PJe-Calc 2.16.0 ([docs/PJE_CALC_IMPORTACAO.md](docs/PJE_CALC_IMPORTACAO.md)), não de documentação oficial publicada. Ao mudar de versão do PJe-Calc, confira os parsers e altere exportador + docs juntos.
 
 ## 8. O que já existe vs. TODO
 
 Já existe:
 
 - Estrutura de pastas e este AGENTS.md
-- FastAPI com jobs stateless (`POST/GET/DELETE`, preview JSON, download xlsx)
+- FastAPI com jobs stateless (`POST/GET/DELETE`, preview JSON, download dos CSVs do PJe-Calc)
 - Store in-memory com TTL
 - Triagem em 3 camadas (PyMuPDF + heurísticas + Gemini em paralelo)
 - Stubs tipados para testes e fallback sem API key
 - Validador com regras de formato, coerência da jornada, duplicatas e conflitos entre páginas (sem regras jurídicas; ver `docs/SCHEMA_EXTRACAO.md`)
-- `excel_builder` com abas provisórias
+- `pjecalc_exporter` com os CSVs de jornada do cartão de ponto e de histórico salarial (PJe-Calc 2.16)
 - `ProcessingRun` + Alembic
 - UI: tela inicial de apresentação, upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
-- Descarte de PDF/Excel/sessão
+- Descarte de PDF/exportação/sessão
 - Testes do frontend (Vitest) para a lógica de revisão e o cliente da API
 - Script de avaliação ponta a ponta contra gabarito (`scripts/evaluate_extraction.py`)
 
@@ -171,10 +172,10 @@ TODO (trabalho futuro):
 - [x] Camada 2: TOC, posição, densidade
 - [x] Camada 3: Gemini (padrão `gemini-3.5-flash-lite`, via `GEMINI_MODEL`) só nas candidatas
 - [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
-- [x] Revisão humana editável (tabelas + `PATCH /extraction`; Excel bloqueado com conflitos abertos)
+- [x] Revisão humana editável (tabelas + `PATCH /extraction`; exportação bloqueada com conflitos abertos)
 - [x] Cartão de ponto escaneado lido no servidor (OCR local + faixas anônimas ao Gemini; um layout)
 - [ ] OCR local para outros layouts de cartão e para holerite escaneado (hoje vão como página)
-- [ ] Layout oficial PJe-Calc
+- [x] Layout de importação do PJe-Calc (CSVs da 2.16: jornada e histórico salarial; férias e faltas não são extraídas)
 - [ ] Avaliação com processos reais anonimizados (script pronto; falta o conjunto de PDFs + gabaritos)
 - [ ] HTTPS / deploy
 - [ ] Autenticação e histórico (fora de escopo; só como trabalho futuro acadêmico)
@@ -200,7 +201,7 @@ npm install
 npm run dev -- --host 127.0.0.1 --port 4174
 ```
 
-A API funciona **sem** Postgres: jobs e Excel continuam in-memory; só a linha de `processing_runs` é omitida. Isso permite preview em ambientes sem Docker.
+A API funciona **sem** Postgres: jobs e exportação continuam in-memory; só a linha de `processing_runs` é omitida. Isso permite preview em ambientes sem Docker.
 
 ## 10. Premissas de domínio
 
@@ -224,7 +225,7 @@ A API funciona **sem** Postgres: jobs e Excel continuam in-memory; só a linha d
 9. Não invente normas, campos oficiais ou regras de negócio sem sinalizar.
 10. Extração: JSON validável, confiança, página, trecho, ausentes/ambiguidades — só em memória.
 
-Ao propor software: modularidade, falhas por estágio, observabilidade **sem conteúdo processual**, validação antes do Excel, processamento stateless.
+Ao propor software: modularidade, falhas por estágio, observabilidade **sem conteúdo processual**, validação antes da exportação, processamento stateless.
 
 ### Anti-padrões (não faça)
 
@@ -235,7 +236,7 @@ Ao propor software: modularidade, falhas por estágio, observabilidade **sem con
 - Assumir extração 100% perfeita
 - Ignorar PDF nativo vs. escaneado
 - Arquitetura de plataforma (filas, multi-tenant, IdP) além do TCC
-- Tratar `provisional-0.1` como layout oficial do PJe-Calc
+- Mudar o leiaute dos CSVs sem conferir os parsers do PJe-Calc (`docs/PJE_CALC_IMPORTACAO.md`)
 - Logar `source_excerpt`, nomes, CPF ou texto de página
 
 ## 12. Portas e URLs
@@ -257,6 +258,6 @@ Rotas da API: prefixo `/api/v1`.
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, memória |
 | PATCH | `/api/v1/jobs/{id}/extraction` | revisão editável, revalida em memória |
 | GET | `/api/v1/jobs/{id}/crops/{crop_id}` | recorte de célula do cartão, memória (PNG, `no-store`) |
-| GET | `/api/v1/jobs/{id}/excel` | xlsx temporário + descarte (409 se houver conflitos) |
+| GET | `/api/v1/jobs/{id}/export` | .zip com CSVs do PJe-Calc, em memória (409 se houver conflitos) |
 | DELETE | `/api/v1/jobs/{id}` | zera a sessão |
 | GET | `/health` | público |

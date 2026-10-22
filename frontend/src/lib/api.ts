@@ -70,8 +70,8 @@ export function reviewCropUrl(jobId: string, cropId: string): string {
   return `/api/v1/jobs/${encodeURIComponent(jobId)}/crops/${encodeURIComponent(cropId)}`
 }
 
-export async function downloadExcel(jobId: string): Promise<Blob> {
-  const response = await fetch(`/api/v1/jobs/${jobId}/excel`)
+export async function downloadExport(jobId: string): Promise<Blob> {
+  const response = await fetch(`/api/v1/jobs/${jobId}/export`)
   if (!response.ok) {
     throw await parseError(response)
   }

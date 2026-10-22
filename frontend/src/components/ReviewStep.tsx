@@ -191,7 +191,7 @@ export function ReviewStep({
   if (openConflicts.length > 0) {
     continueHint = 'Resolva os conflitos e salve as correções.'
   } else if (dirty) {
-    continueHint = 'Salve as correções antes de seguir para o Excel.'
+    continueHint = 'Salve as correções antes de seguir para o download.'
   }
 
   function patchTimeCard(key: string, patch: Partial<TimeCardEntry>) {
@@ -240,7 +240,7 @@ export function ReviewStep({
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
             Corrija horários e verbas na tabela, resolva conflitos entre páginas e salve antes de
-            gerar o Excel.
+            gerar os arquivos do PJe-Calc.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
@@ -580,7 +580,7 @@ export function ReviewStep({
               {saving ? 'Salvando…' : 'Salvar correções'}
             </Button>
             <Button type="button" size="lg" disabled={!canContinue || saving} onClick={onContinue}>
-              Seguir para o Excel
+              Seguir para o download
             </Button>
           </div>
         </div>

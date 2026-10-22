@@ -43,21 +43,22 @@ export function DownloadStep({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Baixar a planilha provisória</CardTitle>
+        <CardTitle>Baixar os arquivos do PJe-Calc</CardTitle>
         <CardDescription>
-          O arquivo segue o layout hipotético <code>provisional-0.1</code>, não o modelo
-          oficial do PJe-Calc. Depois do download, esta sessão é descartada.
+          Um .zip com os CSVs que o PJe-Calc Cidadão importa e um LEIA-ME com os passos.
+          Depois do download, esta sessão é descartada.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <AlertInfo>
-          A planilha segue o layout provisório com abas CartaoPonto, Holerite e
-          MetadadosSessao. Linhas extraídas pelo Gemini aparecem nas duas primeiras abas.
+          O cartão de ponto vai na aba Importar Jornada (cadastre antes a apuração com o
+          período do contrato). Cada verba do holerite vira um arquivo para importar em seu
+          próprio Histórico Salarial. Revise os dados no PJe-Calc depois de importar.
         </AlertInfo>
         {error && <Alert>{error}</Alert>}
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button type="button" size="lg" disabled={busy} onClick={onDownload}>
-            {busy ? 'Gerando…' : 'Baixar Excel e descartar'}
+            {busy ? 'Gerando…' : 'Baixar arquivos e descartar'}
           </Button>
           <Button type="button" variant="secondary" disabled={busy} onClick={onRestart}>
             Cancelar e recomeçar
