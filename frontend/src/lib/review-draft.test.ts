@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   applyBaseSalaryChoice,
   applyConflictKeepPage,
+  confirmPageDates,
   conflictKey,
   formatAmount,
   formatConflictValue,
   markEdited,
+  pagesWithUnconfirmedDates,
   parseAmount,
   parseConflictField,
   withKeys,
@@ -54,6 +56,29 @@ describe('withKeys / withoutKeys', () => {
     const keyed = withKeys(rows, 'tc')
     expect(keyed.map((row) => row._key)).toEqual(['tc0', 'tc1'])
     expect(withoutKeys(keyed)).toEqual(rows)
+  })
+})
+
+describe('datas a confirmar', () => {
+  const rows = [
+    timeCard({ source_page: 4, ambiguous_fields: ['date', 'clock_in'] }),
+    timeCard({ source_page: 4, date: '2024-03-02', ambiguous_fields: ['date'] }),
+    timeCard({ source_page: 1, ambiguous_fields: ['date'] }),
+    timeCard({ source_page: 2 }),
+  ]
+
+  it('lista as páginas com data não confirmada', () => {
+    expect(pagesWithUnconfirmedDates(rows)).toEqual([1, 4])
+  })
+
+  it('confirma só as datas da página escolhida e mantém as outras pendências', () => {
+    const confirmed = confirmPageDates(rows, 4)
+    expect(confirmed.map((row) => row.ambiguous_fields)).toEqual([['clock_in'], [], ['date'], []])
+    expect(pagesWithUnconfirmedDates(confirmed)).toEqual([1])
+  })
+
+  it('editar a data da linha também a confirma', () => {
+    expect(markEdited(rows[1], { date: '2024-03-03' }).ambiguous_fields).toEqual([])
   })
 })
 

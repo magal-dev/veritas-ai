@@ -57,6 +57,7 @@ class ExportSummary:
     incomplete_shifts: int = 0
     omitted_days: int = 0
     unread_times: int = 0
+    unconfirmed_dates: int = 0
     dropped_shifts: int = 0
     historico_files: list[tuple[str, str, int]] = field(default_factory=list)
     skipped_payslips: int = 0
@@ -122,6 +123,11 @@ def build_jornada_csv(time_cards: list[TimeCardEntry], summary: ExportSummary) -
         iso_day = normalize_date(entry.date)
         if iso_day is None:
             summary.skipped_time_cards += 1
+            continue
+        if "date" in entry.ambiguous_fields:
+            # Data não confirmada (ex.: folha curta do OCR local): no dia errado, a jornada
+            # sobrescreveria outro dia no PJe-Calc. Fica de fora até a revisão confirmar.
+            summary.unconfirmed_dates += 1
             continue
         complete, incomplete = _shifts(entry)
         summary.incomplete_shifts += incomplete
@@ -212,7 +218,9 @@ def _readme(summary: ExportSummary) -> str:
         "Revise os dados no PJe-Calc depois de importar. A extração automática pode errar.",
         "",
     ]
-    has_jornada = summary.jornada_days or summary.omitted_days or summary.skipped_time_cards
+    has_jornada = (
+        summary.jornada_days or summary.omitted_days or summary.skipped_time_cards or summary.unconfirmed_dates
+    )
     if has_jornada:
         lines += [
             f"1. {JORNADA_FILENAME} ({summary.jornada_days} dia(s))",
@@ -226,6 +234,11 @@ def _readme(summary: ExportSummary) -> str:
             lines.append(
                 f"   Atenção: {summary.incomplete_shifts} turno(s) com só entrada ou só saída"
                 " ficaram de fora. Complete-os no PJe-Calc."
+            )
+        if summary.unconfirmed_dates:
+            lines.append(
+                f"   Atenção: {summary.unconfirmed_dates} registro(s) com data não confirmada"
+                " ficaram de fora. Confirme as datas na revisão e gere os arquivos de novo."
             )
         if summary.unread_times:
             lines.append(

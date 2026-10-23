@@ -4,6 +4,9 @@ A página do cartão nunca sai do servidor. Fluxo por página visual candidata:
 
 1. OCR local (Tesseract) da página inteira; regras do layout montam a tabela dia → horários.
    Página sem o período impresso ou sem a tabela não é reconhecida e segue o caminho normal.
+   Página reconhecida cujas linhas não confirmam as datas (folha curta, meses ilegíveis)
+   continua aqui: os horários seguem este fluxo e a data de cada registro vai para a revisão
+   (`date` em `ambiguous_fields`; a exportação não leva o dia até o perito confirmar).
 2. Cada célula é relida em recorte, só dígitos (com e sem binarização). Três leituras iguais
    e perto da jornada observada = valor aceito localmente.
 3. Células duvidosas que passam na trava (tamanho de uma célula da coluna, com tinta, sem
@@ -248,6 +251,9 @@ class TimeCardPage:
     cells: list[Cell] = field(default_factory=list)
     work_days: list[str] = field(default_factory=list)  # dias com linha de jornada
     unread_days: list[str] = field(default_factory=list)  # dia do período sem linha lida
+    # False: layout reconhecido, mas as linhas não confirmam as datas montadas (folha curta,
+    # mês ilegível). Os horários seguem lidos aqui; a data de cada registro fica para o perito.
+    dates_confirmed: bool = True
 
 
 @dataclass
@@ -416,7 +422,10 @@ def _dates_agree(rows: list[_Row], days: list[date], start: date, one_row_per_da
 
 
 def parse_page(lines: list[list[Word]], page_number: int) -> TimeCardPage | None:
-    """Monta a tabela do cartão a partir das linhas do OCR; None se o layout ou as datas não baterem."""
+    """Monta a tabela do cartão a partir das linhas do OCR; None se o layout não bater.
+
+    Datas que as próprias linhas não confirmam deixam `dates_confirmed=False`.
+    """
     period = _read_period("\n".join(" ".join(w.text for w in words) for words in lines))
     if period is None:
         return None
@@ -445,10 +454,10 @@ def parse_page(lines: list[list[Word]], page_number: int) -> TimeCardPage | None
             days.append(cursor)
             cursor += timedelta(days=1)
         weekdays_count = False
-        if days[-1] > end:
-            return None  # dia da semana mal lido empurrou as datas para fora do período
-    if not _dates_agree(rows, days, start, weekdays_count):
-        return None
+    # Datas não confirmadas (dia da semana mal lido empurrou as datas para fora do período, ou
+    # os meses impressos não bastam/não batem) não descartam a página: ela iria inteira ao
+    # Gemini. Os horários seguem lidos aqui e a data vai para a revisão.
+    page.dates_confirmed = days[-1] <= end and _dates_agree(rows, days, start, weekdays_count)
 
     for row, day in zip(rows, days):
         if _is_day_off(row, columns):
@@ -707,7 +716,10 @@ class TimeCardReader:
             else:
                 result.pages.append(page)
         cells = [c for page in result.pages for c in page.cells]
-        result.schedule = observed_schedule(cells)
+        # A jornada sai das páginas com datas confirmadas: numa página sem confirmação o dia
+        # da semana de cada linha pode estar deslocado.
+        confirmed = [c for page in result.pages if page.dates_confirmed for c in page.cells]
+        result.schedule = observed_schedule(confirmed or cells)
         resolve_local(cells, result.schedule)
         return result
 
@@ -758,6 +770,7 @@ def to_entries(pages: list[TimeCardPage]) -> tuple[list[TimeCardEntry], dict[str
     entries: list[TimeCardEntry] = []
     crops: dict[str, bytes] = {}
     for page in pages:
+        date_pending = [] if page.dates_confirmed else ["date"]
         by_day: dict[str, list[Cell]] = {}
         for cell in page.cells:
             by_day.setdefault(cell.day, []).append(cell)
@@ -791,7 +804,7 @@ def to_entries(pages: list[TimeCardPage]) -> tuple[list[TimeCardEntry], dict[str
                     competence=day[:7],
                     source_page=page.page_number,
                     confidence=confidence,
-                    ambiguous_fields=ambiguous,
+                    ambiguous_fields=date_pending + ambiguous,
                     review_crops=review_crops,
                     **values,
                 )
@@ -804,7 +817,7 @@ def to_entries(pages: list[TimeCardPage]) -> tuple[list[TimeCardEntry], dict[str
                     competence=day[:7],
                     source_page=page.page_number,
                     confidence=0.0,
-                    ambiguous_fields=["clock_in", "clock_out"],
+                    ambiguous_fields=[*date_pending, "clock_in", "clock_out"],
                 )
             )
     return entries, crops
@@ -816,6 +829,7 @@ def summary(local: LocalTimeCards) -> dict[str, int]:
     return {
         "pages": len(local.pages),
         "unrecognized": len(local.unrecognized_pages),
+        "dates_unconfirmed": sum(not page.dates_confirmed for page in local.pages),
         "cells": len(cells),
         "local": sum(c.source == "local" for c in cells),
         "gemini": sum(c.source == "gemini" for c in cells),

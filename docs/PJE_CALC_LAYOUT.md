@@ -34,6 +34,7 @@ Data;Entrada1;Saída1;Entrada2;Saída2;Entrada3;Saída3;Entrada4;Saída4;Entrada
 | `Entrada3`…`Saída6` | registros extras do mesmo dia, na ordem da extração | até 6 turnos por dia; o excedente fica de fora (contado) |
 
 - Turno com só entrada ou só saída é omitido, porque o PJe-Calc recusa o arquivo inteiro (MSG0164). A quantidade vai para o LEIA-ME para o perito completar no PJe-Calc. Se o dia ficar sem nenhum turno completo, ele não é exportado (uma linha vazia apagaria as marcações como folga).
+- Registro com `date` em `ambiguous_fields` (data não confirmada, ex.: folha curta lida pelo OCR local) fica de fora até a revisão confirmar a data, porque no dia errado a jornada sobrescreveria outro dia no PJe-Calc. A quantidade vai para o LEIA-ME.
 - Horário vazio que ainda está em `ambiguous_fields` **não foi lido** (ex.: célula duvidosa do OCR local do cartão escaneado, ou dia do período sem linha lida) e não é tratado como ausência de marcação. Se o dia ficar sem turno completo, ele não é exportado; a quantidade de horários vai para o LEIA-ME. Quando o perito preenche o campo na revisão, ele sai de `ambiguous_fields` e o dia é exportado normalmente.
 - Dia sem nenhum horário (e sem horário a conferir) sai com as colunas vazias (folga, DSR, feriado ou falta). No PJe-Calc isso apaga as marcações daquele dia.
 - Jornada que vira o dia (`22:00` → `06:00`) é exportada como está; o PJe-Calc aceita.

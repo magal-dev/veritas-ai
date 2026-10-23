@@ -11,11 +11,13 @@ import { toPageRanges } from '@/lib/pages'
 import {
   applyBaseSalaryChoice,
   applyConflictKeepPage,
+  confirmPageDates,
   conflictKey,
   formatAmount,
   formatConflictValue,
   markEdited,
   parseAmount,
+  pagesWithUnconfirmedDates,
   parseConflictField,
   withKeys,
   withoutKeys,
@@ -169,7 +171,10 @@ export function ReviewStep({
   const [openConflicts, setOpenConflicts] = useState(extraction.conflicts)
   const [dirty, setDirty] = useState(false)
 
+  const unconfirmedDatePages = pagesWithUnconfirmedDates(timeCards)
+
   const hasQualityIssues =
+    unconfirmedDatePages.length > 0 ||
     extraction.unclassified_candidate_pages.length > 0 ||
     extraction.missing_fields.length > 0 ||
     extraction.ambiguous_fields.length > 0 ||
@@ -201,6 +206,11 @@ export function ReviewStep({
 
   function patchPayslip(key: string, patch: Partial<PayslipEntry>) {
     setPayslips((rows) => rows.map((row) => (row._key === key ? markEdited(row, patch) : row)))
+    setDirty(true)
+  }
+
+  function handleConfirmDates(page: number) {
+    setTimeCards((rows) => confirmPageDates(rows, page))
     setDirty(true)
   }
 
@@ -271,6 +281,28 @@ export function ReviewStep({
             <CardTitle className="text-base">Pendências da extração</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-ink-muted">
+            {unconfirmedDatePages.length > 0 && (
+              <div className="space-y-2">
+                <p>
+                  Datas a confirmar: os horários destas folhas foram lidos, mas as linhas não
+                  confirmaram as datas (folha curta ou data cortada na margem). Confira as datas na
+                  tabela com o documento; os dias só entram na exportação depois da confirmação.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unconfirmedDatePages.map((page) => (
+                    <Button
+                      key={page}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleConfirmDates(page)}
+                    >
+                      Confirmar datas da p. {page}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             {extraction.unclassified_candidate_pages.length > 0 && (
               <div className="space-y-2">
                 <p>

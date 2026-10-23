@@ -159,15 +159,31 @@ def test_parse_page_infers_period_end_when_ocr_garbles_it():
     assert page.work_days[-1] == "2025-08-20"
 
 
-def test_parse_page_rejects_dates_that_disagree_with_printed_months():
+def test_parse_page_flags_dates_that_disagree_with_printed_months():
     # Início lido 7 dias adiantado: os dias da semana ainda batem, mas os meses impressos
-    # nas linhas da virada de mês não.
+    # nas linhas da virada de mês não. A página fica (não vai inteira ao Gemini), com as
+    # datas para o perito confirmar.
     lines = _sheet()
     lines[1] = [
         _word(90, 140, "Período:", w=100),
         *[_word(200 + 120 * i, 140, t, w=110) for i, t in enumerate("28/07/2025 à 27/08/2025".split())],
     ]
-    assert parse_page(lines, page_number=1) is None
+    page = parse_page(lines, page_number=1)
+    assert page is not None and not page.dates_confirmed
+    assert page.cells  # os horários continuam lidos
+    assert parse_page(_sheet(), page_number=1).dates_confirmed  # type: ignore[union-attr]
+
+
+def test_parse_page_keeps_short_sheet_with_unconfirmed_dates():
+    # Folha parcial (desligamento): poucas linhas, meses impressos insuficientes para confirmar.
+    end = START + timedelta(days=7)
+    lines = _sheet(end=end, period=f"{START:%d/%m/%Y} à {end:%d/%m/%Y}")
+    rows = [line for line in lines[2:] if len(line) > 1 and weekday_of(line[1].text)]
+    for line in rows[4:]:  # data cortada na margem: só 4 meses legíveis
+        line[0] = Word(line[0].x, line[0].y, line[0].w, line[0].h, "~/", line[0].line)
+    page = parse_page(lines, page_number=1)
+    assert page is not None and not page.dates_confirmed
+    assert page.work_days  # os horários continuam lidos
 
 
 def test_parse_page_ignores_pages_without_layout():
@@ -391,6 +407,21 @@ def test_to_entries_marks_pending_fields_and_keeps_crops_only_for_non_local_cell
     assert len(crops) == 3 and set(crops) >= set(first.review_crops.values())
     assert all(png.startswith(b"\x89PNG") for png in crops.values())
     assert ocr.summary(LocalTimeCards(pages=[page]))["review"] == 2
+
+
+def test_to_entries_sends_dates_of_unconfirmed_page_to_review():
+    read = _cell("2025-07-21", 0, "10:00")
+    read.value, read.source = "10:00", "local"
+    page = _page([read], unread_days=["2025-07-22"])
+    page.dates_confirmed = False
+
+    entries, _ = to_entries([page])
+
+    by_day = {entry.date: entry for entry in entries}
+    assert by_day["2025-07-21"].clock_in == "10:00"  # o horário lido continua valendo
+    assert by_day["2025-07-21"].ambiguous_fields[0] == "date"
+    assert by_day["2025-07-22"].ambiguous_fields == ["date", "clock_in", "clock_out"]
+    assert ocr.summary(LocalTimeCards(pages=[page]))["dates_unconfirmed"] == 1
 
 
 # ---------------------------------------------------------------- leitor e Tesseract

@@ -112,6 +112,19 @@ def test_jornada_does_not_export_unread_ocr_day_as_day_off():
     assert "3 horário(s) marcados para conferir" in readme
 
 
+def test_jornada_skips_unconfirmed_dates_until_review_confirms():
+    pending = _card("2025-08-01", clock_in="08:00", clock_out="15:00", ambiguous_fields=["date"])
+    extraction = ExtractionResult(job_id=uuid4(), time_cards=[pending])
+    export = PjeCalcExporter().build(extraction)
+    assert _rows(export.files[JORNADA_FILENAME], "iso-8859-1")[1:] == []
+    assert export.summary.unconfirmed_dates == 1
+    assert "1 registro(s) com data não confirmada" in export.files[README_FILENAME].decode("utf-8-sig")
+
+    confirmed = pending.model_copy(update={"ambiguous_fields": []})
+    export = PjeCalcExporter().build(ExtractionResult(job_id=uuid4(), time_cards=[confirmed]))
+    assert _rows(export.files[JORNADA_FILENAME], "iso-8859-1")[1:] == ["01/08/2025;08:00;15:00;;;;;;;;;;"]
+
+
 def test_jornada_exports_ocr_day_once_review_fills_it():
     # A revisão tira o campo de ambiguous_fields quando o perito o preenche.
     extraction = ExtractionResult(
