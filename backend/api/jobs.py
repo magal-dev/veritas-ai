@@ -169,6 +169,25 @@ async def download_export(
     )
 
 
+@router.get("/{job_id}/crops/{crop_id}")
+async def get_review_crop(
+    job_id: UUID,
+    crop_id: str,
+    service: JobService = Depends(get_job_service),
+) -> Response:
+    """Recorte de uma célula do cartão para a revisão; vive só na sessão."""
+    payload = service.review_crop(job_id, crop_id)
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "CROP_NOT_FOUND",
+                "message": "Recorte inexistente ou sessão expirada.",
+            },
+        )
+    return Response(content=payload, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 @router.delete("/{job_id}", status_code=204)
 async def discard_job(
     job_id: UUID,

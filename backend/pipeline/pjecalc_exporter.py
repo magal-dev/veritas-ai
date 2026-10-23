@@ -56,6 +56,8 @@ class ExportSummary:
     skipped_time_cards: int = 0
     incomplete_shifts: int = 0
     omitted_days: int = 0
+    unread_times: int = 0
+    unconfirmed_dates: int = 0
     dropped_shifts: int = 0
     historico_files: list[tuple[str, str, int]] = field(default_factory=list)
     skipped_payslips: int = 0
@@ -122,9 +124,21 @@ def build_jornada_csv(time_cards: list[TimeCardEntry], summary: ExportSummary) -
         if iso_day is None:
             summary.skipped_time_cards += 1
             continue
+        if "date" in entry.ambiguous_fields:
+            # Data não confirmada (ex.: folha curta do OCR local): no dia errado, a jornada
+            # sobrescreveria outro dia no PJe-Calc. Fica de fora até a revisão confirmar.
+            summary.unconfirmed_dates += 1
+            continue
         complete, incomplete = _shifts(entry)
         summary.incomplete_shifts += incomplete
-        if incomplete:
+        # Horário vazio que segue em ambiguous_fields não foi lido (ex.: célula duvidosa do
+        # OCR local que a revisão não preencheu); não é ausência de marcação.
+        unread = sum(
+            1 for name in ("clock_in", "break_start", "break_end", "clock_out")
+            if name in entry.ambiguous_fields and getattr(entry, name) is None
+        )
+        summary.unread_times += unread
+        if incomplete or unread:
             days_with_incomplete.add(iso_day)
         # Mais de um registro no mesmo dia (repetição na mesma página) vira turnos extras,
         # na ordem em que aparecem: ordenar por horário quebraria jornada que vira o dia.
@@ -204,7 +218,9 @@ def _readme(summary: ExportSummary) -> str:
         "Revise os dados no PJe-Calc depois de importar. A extração automática pode errar.",
         "",
     ]
-    has_jornada = summary.jornada_days or summary.omitted_days or summary.skipped_time_cards
+    has_jornada = (
+        summary.jornada_days or summary.omitted_days or summary.skipped_time_cards or summary.unconfirmed_dates
+    )
     if has_jornada:
         lines += [
             f"1. {JORNADA_FILENAME} ({summary.jornada_days} dia(s))",
@@ -218,6 +234,16 @@ def _readme(summary: ExportSummary) -> str:
             lines.append(
                 f"   Atenção: {summary.incomplete_shifts} turno(s) com só entrada ou só saída"
                 " ficaram de fora. Complete-os no PJe-Calc."
+            )
+        if summary.unconfirmed_dates:
+            lines.append(
+                f"   Atenção: {summary.unconfirmed_dates} registro(s) com data não confirmada"
+                " ficaram de fora. Confirme as datas na revisão e gere os arquivos de novo."
+            )
+        if summary.unread_times:
+            lines.append(
+                f"   Atenção: {summary.unread_times} horário(s) marcados para conferir na revisão"
+                " seguiam vazios e não foram exportados. Confira-os no documento."
             )
         if summary.omitted_days:
             lines.append(

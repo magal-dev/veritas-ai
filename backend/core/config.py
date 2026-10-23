@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = 80
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
+    # Cartão de ponto escaneado lido no servidor (Tesseract); ao Gemini só vão faixas anônimas.
+    time_card_ocr: bool = True
+    tesseract_cmd: str = "tesseract"
     frontend_origin: str = "http://127.0.0.1:4174"
 
 

@@ -10,7 +10,7 @@ Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar cód
 
 Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera os arquivos CSV que o PJe-Calc importa. Depois do download, descarta tudo.
 
-Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local, OCR pelo Gemini), com revisão editável antes da exportação para o PJe-Calc (CSVs de importação da versão 2.16). Deploy HTTPS permanece trabalho futuro.
+Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local; cartão de ponto escaneado lido por OCR local com só faixas anônimas ao Gemini; demais escaneadas com OCR pelo Gemini), com revisão editável antes da exportação para o PJe-Calc (CSVs de importação da versão 2.16). Deploy HTTPS permanece trabalho futuro.
 
 ## 2. Mapa de pastas
 
@@ -31,6 +31,7 @@ Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini
 │   ├── pipeline/             ← estágios do processamento
 │   │   ├── extractor.py      ← Camadas 1–2 (PyMuPDF + regex + heurísticas; pdfplumber na shortlist)
 │   │   ├── classifier.py     ← Camada 3 Gemini (só páginas candidatas)
+│   │   ├── time_card_ocr.py  ← Camada 3, cartão escaneado: OCR local + faixas anônimas
 │   │   ├── validator.py      ← regras + schema Pydantic
 │   │   └── pjecalc_exporter.py ← CSVs de importação do PJe-Calc (.zip em memória)
 │   ├── models/               ← SQLAlchemy (ProcessingRun apenas)
@@ -53,6 +54,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 | Backend | Python, FastAPI, Uvicorn |
 | IA / LLM | Google Gemini API (`gemini-3.5-flash-lite`, configurável via `GEMINI_MODEL`) via `google-genai` (SDK oficial; `google-generativeai` foi descontinuado) |
 | PDF | PyMuPDF (`import pymupdf as fitz`) + pdfplumber |
+| OCR local | Tesseract (binário, idioma `por`, chamado por `subprocess`) + Pillow; só para cartão de ponto escaneado |
 | ORM | SQLAlchemy async + asyncpg |
 | Migrations | Alembic |
 | Banco | PostgreSQL (Neon em nuvem; Compose na máquina local) |
@@ -60,6 +62,8 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 | Datas | pendulum + `datetime` nativo |
 
 TypeScript no frontend é tipagem sobre React, não troca de stack. Não introduza Next.js, Celery, Redis, outro LLM ou outro banco.
+
+Justificativa do Tesseract (limitação real de privacidade): com a página inteira, o Gemini recebe nome, datas e jornada do trabalhador e, nas folhas reais medidas, errou cerca de 1 horário em 15 sem sinalizar. Com o OCR local, o cartão não sai do servidor; o Gemini recebe só faixas de células de horário sem identificação. O binário é opcional: sem ele (ou com `TIME_CARD_OCR=false`) o cartão escaneado volta a ir como página. Não é OCR genérico: reconhece só o layout descrito em `pipeline/time_card_ocr.py`.
 
 ## 4. Arquitetura
 
@@ -75,14 +79,15 @@ PDF bruto
   → extração local (PyMuPDF; pdfplumber só na shortlist)
   → filtro por palavras-chave
   → heurísticas de posição e densidade
-  → classificação e extração Gemini (só páginas candidatas)
+  → cartão escaneado reconhecido: OCR local + faixas anônimas ao Gemini
+  → classificação e extração Gemini (demais páginas candidatas)
   → validação
   → CSVs de importação do PJe-Calc (.zip)
   → download no React
   → descarte imediato
 ```
 
-O pipeline **roda** com triagem local e Gemini nas páginas candidatas (até 25 páginas, em lotes de 5 por chamada, máx. 5 chamadas). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. Páginas escaneadas (sem texto extraível) são pontuadas localmente por sinais visuais e ocupam só as vagas que sobrarem depois das candidatas de texto.
+O pipeline **roda** com triagem local e Gemini nas páginas candidatas (até 25 páginas, em lotes de 5 por chamada, máx. 5 chamadas de página). Páginas visuais candidatas passam antes pelo OCR local do cartão de ponto; as reconhecidas não vão como página, só como faixas (4 por chamada). Sem `GEMINI_API_KEY`, a triagem local funciona mas as candidatas não são classificadas. Páginas escaneadas (sem texto extraível) são pontuadas localmente por sinais visuais e ocupam só as vagas que sobrarem depois das candidatas de texto.
 
 ## 5. Privacidade (Privacy by Design)
 
@@ -95,6 +100,7 @@ Fluxo de dados: Upload PDF → processamento em memória → download dos CSVs �
 Regras obrigatórias:
 
 - Nenhum dado extraído do PDF vai para o banco.
+- Cartão de ponto escaneado reconhecido não sai do servidor como página. Ao Gemini vão só faixas de células de horário que passaram pela trava (tamanho de célula da coluna, com tinta, sem palavras), embaralhadas, sem data, nome ou cabeçalho. O vínculo linha → dia e os recortes da revisão ficam só na sessão (`JobSession.review_crops`).
 - PostgreSQL só recebe metadados operacionais: timestamps, status, `pdf_page_count`, `candidate_page_count`, `gemini_call_count`, `error_code`. Sem nome de arquivo, hash de conteúdo, JSON, trechos, CPF, número de processo.
 - O PDF é apagado no `finally` imediatamente após o processamento (triagem + Gemini).
 - O .zip de exportação é montado em memória a cada download e nunca é gravado.
@@ -121,6 +127,13 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 **Camada 2 — heurísticas (Python):** TOC do PDF (`fitz.get_toc()`), vizinhos ±1 com padrão numérico, densidade de texto. Página só com palavra fraca precisa de 4+ padrões numéricos. A detecção de tabelas do pdfplumber (`extract_tables`, cara) roda só na shortlist (top 10), para confirmar e reordenar.
 
 **Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (lotes de até 5 páginas por chamada, máx. 5 chamadas = 25 candidatas; timeout de 90 s e até 3 tentativas em 429/5xx). O lote dilui o custo fixo da instrução e a latência é a do lote mais lento, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
+
+**Cartão de ponto escaneado (`pipeline/time_card_ocr.py`):** as páginas visuais candidatas passam primeiro pelo OCR local (Tesseract). Se o layout é reconhecido (período impresso, linhas com dia da semana, colunas Ent/Sai), a página vira registros sem ir ao Gemini. Se as datas não se confirmam pelas próprias linhas (mês impresso, dia da semana; típico de folha curta de desligamento), a página continua aqui: os horários seguem o mesmo fluxo e todos os registros dela recebem `date` em `ambiguous_fields`, para o perito confirmar na revisão; a exportação não leva esses dias antes disso. A jornada observada usa só páginas com datas confirmadas:
+
+- Três leituras do horário (página + recorte só dígitos, com e sem binarização) iguais e a até 75 min da jornada observada (mediana por dia da semana) = aceito localmente.
+- Colunas com célula duvidosa vão ao Gemini como faixa vertical (4 faixas por chamada), com as células aprovadas pela trava em ordem embaralhada. A leitura vale só perto da jornada; nas células aceitas localmente, uma leitura diferente do Gemini manda o horário para revisão (as três leituras do Tesseract erram juntas quando o pixel é o mesmo).
+- O resto fica vazio em `ambiguous_fields`, com recorte da célula na revisão. Dia do período sem linha lida vira registro vazio para conferir.
+- Medição nas 4 folhas reais: `scripts/evaluate_cell_fallback.py` (mesmo código; só métricas).
 
 **Trilha visual (PDF escaneado):** página com até 200 caracteres não brancos de texto extraível e alguma imagem embutida, ou com imagem cobrindo ≥ 85% da página e sem sinal de texto, é página visual. Ela é pontuada sem API por um pixmap cinza de 72 DPI: proporção de tinta, faixas de linhas com tinta e traços horizontais. Página em branco ou carimbo isolado não entra. Vizinho ±1 só entra se também for página visual (continuação de cartão escaneado). `extract_tables` nunca roda em página só imagem. Candidatas de texto têm prioridade; as visuais ocupam as vagas restantes até 25, e o Gemini faz o OCR delas na camada 3. Uma petição escaneada pode ocupar uma vaga restante e é classificada como `IRRELEVANTE`.
 
@@ -160,6 +173,8 @@ TODO (trabalho futuro):
 - [x] Camada 3: Gemini (padrão `gemini-3.5-flash-lite`, via `GEMINI_MODEL`) só nas candidatas
 - [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
 - [x] Revisão humana editável (tabelas + `PATCH /extraction`; exportação bloqueada com conflitos abertos)
+- [x] Cartão de ponto escaneado lido no servidor (OCR local + faixas anônimas ao Gemini; um layout)
+- [ ] OCR local para outros layouts de cartão e para holerite escaneado (hoje vão como página)
 - [x] Layout de importação do PJe-Calc (CSVs da 2.16: jornada e histórico salarial; férias e faltas não são extraídas)
 - [ ] Avaliação com processos reais anonimizados (script pronto; falta o conjunto de PDFs + gabaritos)
 - [ ] HTTPS / deploy
@@ -194,7 +209,7 @@ A API funciona **sem** Postgres: jobs e exportação continuam in-memory; só a 
 - Qualidade varia; escaneados passam pela triagem visual local antes do Gemini.
 - Layouts de cartão de ponto e holerite variam entre empresas.
 - Extração deve ser auditável na sessão, sem persistência.
-- Gemini faz OCR + interpretação semântica nas páginas candidatas (nativas e escaneadas).
+- Gemini faz OCR + interpretação semântica nas páginas candidatas (nativas e escaneadas), exceto no cartão de ponto escaneado reconhecido pelo OCR local, em que só lê faixas anônimas de horários.
 - Nada processual sobrevive ao fim da sessão.
 
 ## 11. Como responder e implementar (para agentes)
@@ -242,6 +257,7 @@ Rotas da API: prefixo `/api/v1`.
 | GET | `/api/v1/jobs/{id}` | metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, memória |
 | PATCH | `/api/v1/jobs/{id}/extraction` | revisão editável, revalida em memória |
+| GET | `/api/v1/jobs/{id}/crops/{crop_id}` | recorte de célula do cartão, memória (PNG, `no-store`) |
 | GET | `/api/v1/jobs/{id}/export` | .zip com CSVs do PJe-Calc, em memória (409 se houver conflitos) |
 | DELETE | `/api/v1/jobs/{id}` | zera a sessão |
 | GET | `/health` | público |

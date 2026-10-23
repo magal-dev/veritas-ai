@@ -8,7 +8,7 @@ Guia operacional para o Claude Code. A fonte de verdade de produto, stack, priva
 
 ## Resumo rápido
 
-TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera os CSVs de importação do PJe-Calc 2.16 (em um `.zip`). Páginas escaneadas são pontuadas localmente por sinais visuais e vão ao Gemini (que faz o OCR) só nas vagas restantes. Nada processual é persistido.
+TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera os CSVs de importação do PJe-Calc 2.16 (em um `.zip`). Páginas escaneadas são pontuadas localmente por sinais visuais e ocupam só as vagas restantes. Cartão de ponto escaneado de layout reconhecido é lido por OCR local (Tesseract) e só faixas anônimas de horários duvidosos vão ao Gemini; as demais escaneadas vão como página (o Gemini faz o OCR). Nada processual é persistido.
 
 - Backend: `backend/` (FastAPI, Python ≥ 3.11). Imports absolutos a partir de `backend/` (`from core.config import settings`), pois `pythonpath = ["."]`.
 - Frontend: `frontend/` (Vite + React 19 + TypeScript + Tailwind 4 + shadcn/ui).
@@ -33,6 +33,7 @@ python scripts/generate_sample_pdf.py    # gera tests/fixtures/processo_exemplo.
 python scripts/test_sample_pdf.py        # POST /jobs + GET /preview e imprime o resumo
 python scripts/benchmark_pipeline.py 300 # tempo da triagem local (sem Gemini) em PDF sintético
 python scripts/evaluate_extraction.py processo.pdf gabarito.json  # métricas contra gabarito (PDF real fica fora do repo)
+python scripts/evaluate_cell_fallback.py gabarito.json folha*.jpg   # cartão escaneado via OCR local; --send mede com o Gemini
 
 # Frontend (a partir de frontend/)
 npm install
@@ -48,10 +49,10 @@ npm test                                 # vitest (lógica de revisão e cliente
 
 1. `_assert_pdf` e `_write_temp_pdf` (tempfile, limite `MAX_UPLOAD_MB`).
 2. `pipeline/extractor.py::LocalDocumentExtractor.extract` → `ExtractionSignals` (camadas 1–2).
-3. `pipeline/classifier.py::build_classifier(...).classify` em `asyncio.to_thread` (camada 3; `StubDocumentClassifier` sem API key).
+3. `pipeline/classifier.py::build_classifier(...).classify` em `asyncio.to_thread` (camada 3; `StubDocumentClassifier` sem API key). Páginas visuais candidatas passam antes por `pipeline/time_card_ocr.py::TimeCardReader` (se `TIME_CARD_OCR` e Tesseract disponíveis): reconhecidas viram registros + faixas ao Gemini; as outras vão como página.
 4. Monta `ExtractionResult` → `pipeline/validator.py`.
 5. `finally`: fecha o upload e apaga o PDF.
-6. Sessão vai para `services/session_store.py` (in-memory, TTL `JOB_TTL_SECONDS`); `ProcessingRun` recebe só metadados (falha de banco é tolerada).
+6. Sessão vai para `services/session_store.py` (in-memory, TTL `JOB_TTL_SECONDS`), com os recortes de célula da revisão em `review_crops`; `ProcessingRun` recebe só metadados (falha de banco é tolerada).
 
 Os CSVs do PJe-Calc (`pipeline/pjecalc_exporter.py`) são gerados em memória sob demanda em `GET /jobs/{id}/export`, como `.zip`.
 
@@ -64,6 +65,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 | Novo campo extraído | `docs/SCHEMA_EXTRACAO.md`, `schemas/extraction.py`, prompt em `pipeline/classifier.py`, `pipeline/validator.py`, `pipeline/pjecalc_exporter.py` + `docs/PJE_CALC_LAYOUT.md` (se o PJe-Calc importar o campo), `frontend/src/lib/types.ts`, testes |
 | Palavras-chave, TOC, densidade | `pipeline/extractor.py`, `tests/test_extractor.py` |
 | Prompt, parsing ou limite de chamadas do Gemini | `pipeline/classifier.py`, `tests/test_classifier.py` |
+| OCR local do cartão escaneado (layout, trava, faixas) | `pipeline/time_card_ocr.py`, `tests/test_time_card_ocr.py`; medir com `scripts/evaluate_cell_fallback.py` |
 | Regras de validação, duplicatas e conflitos | `pipeline/validator.py`, `tests/test_validator.py`, seção "Validação" de `docs/SCHEMA_EXTRACAO.md` |
 | CSVs de importação do PJe-Calc | `pipeline/pjecalc_exporter.py` + `docs/PJE_CALC_LAYOUT.md` juntos (leiaute em `docs/PJE_CALC_IMPORTACAO.md`), `tests/test_pjecalc_exporter.py` |
 | Rota ou resposta da API | `api/jobs.py`, `schemas/jobs.py`, `services/job_service.py`, `frontend/src/lib/api.ts`, `tests/test_jobs_api.py` |
@@ -73,6 +75,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 ## Testes
 
+- Nunca chame o Tesseract real em testes: `TimeCardReader` recebe o executor de OCR (`OcrRunner`) e os testes passam um falso com TSV pronto (padrão em `tests/test_time_card_ocr.py`).
 - Nunca chame o Gemini real em testes. Use `StubDocumentClassifier` ou faça patch de `pipeline.classifier.genai.Client` (o mock responde em `.return_value.models.generate_content`) (padrão em `tests/test_classifier.py`).
 - Gere PDFs de teste em memória com PyMuPDF (`import pymupdf as fitz`; o módulo `fitz` está depreciado) dentro do `tmp_path`. Não commite PDFs com dados reais.
 - `asyncio_mode = "auto"`: testes `async def` não precisam de decorator.

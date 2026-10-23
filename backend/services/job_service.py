@@ -17,6 +17,7 @@ from models.processing_run import RunStatus
 from pipeline.classifier import build_classifier
 from pipeline.extractor import LocalDocumentExtractor
 from pipeline.pjecalc_exporter import PjeCalcExporter
+from pipeline.time_card_ocr import build_time_card_reader
 from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
 from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
@@ -37,6 +38,7 @@ class JobService:
         self._classifier = build_classifier(
             api_key=settings.gemini_api_key,
             model_name=settings.gemini_model,
+            time_card_reader=build_time_card_reader(settings.time_card_ocr, settings.tesseract_cmd),
         )
         self._validator = SchemaExtractionValidator()
         self._exporter = PjeCalcExporter()
@@ -107,6 +109,7 @@ class JobService:
             created_at=datetime.now(timezone.utc),
             extraction=extraction,
             pipeline_note=pipeline_note,
+            review_crops=outcome.review_crops,
         )
         session_store.put(session)
 
@@ -167,6 +170,10 @@ class JobService:
             len(validated.conflicts),
         )
         return validated
+
+    def review_crop(self, job_id: uuid.UUID, crop_id: str) -> bytes | None:
+        session = session_store.get(job_id)
+        return None if session is None else session.review_crops.get(crop_id)
 
     def build_export(self, session: JobSession) -> bytes:
         if session.extraction is None:

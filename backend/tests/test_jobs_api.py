@@ -271,3 +271,28 @@ def test_patch_unknown_session_returns_404():
     )
     assert response.status_code == 404
     assert response.json()["detail"]["error_code"] == "SESSION_NOT_FOUND"
+
+
+def test_review_crop_is_served_from_session_only():
+    extraction = ExtractionResult(job_id=uuid4())
+    session = JobSession(
+        job_id=extraction.job_id,
+        status=JobStatus.COMPLETED,
+        created_at=datetime.now(timezone.utc),
+        extraction=extraction,
+        review_crops={"abc123": b"\x89PNG-recorte"},
+    )
+    session_store.put(session)
+    client = TestClient(app)
+
+    response = client.get(f"/api/v1/jobs/{extraction.job_id}/crops/abc123")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.content == b"\x89PNG-recorte"
+
+    assert client.get(f"/api/v1/jobs/{extraction.job_id}/crops/outro").status_code == 404
+    client.delete(f"/api/v1/jobs/{extraction.job_id}")
+    missing = client.get(f"/api/v1/jobs/{extraction.job_id}/crops/abc123")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["error_code"] == "CROP_NOT_FOUND"

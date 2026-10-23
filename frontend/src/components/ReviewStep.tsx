@@ -5,16 +5,19 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { fieldList } from '@/lib/fields'
+import { reviewCropUrl } from '@/lib/api'
+import { fieldLabel, fieldList } from '@/lib/fields'
 import { toPageRanges } from '@/lib/pages'
 import {
   applyBaseSalaryChoice,
   applyConflictKeepPage,
+  confirmPageDates,
   conflictKey,
   formatAmount,
   formatConflictValue,
   markEdited,
   parseAmount,
+  pagesWithUnconfirmedDates,
   parseConflictField,
   withKeys,
   withoutKeys,
@@ -66,6 +69,22 @@ type ReviewStepProps = {
   onSave: (body: ExtractionUpdateBody) => Promise<void>
   onContinue: () => void
   onDiscard: () => void
+}
+
+/** Recorte da célula lida no servidor, para conferir o horário sem abrir o PDF. */
+function CellCrop({ jobId, row, field }: { jobId: string; row: TimeCardEntry; field: string }) {
+  const cropId = row.review_crops?.[field]
+  if (!cropId) {
+    return null
+  }
+  return (
+    <img
+      src={reviewCropUrl(jobId, cropId)}
+      alt={`Recorte da célula: ${fieldLabel(field)} em ${row.date}`}
+      className="mt-1 h-7 w-auto rounded border border-rule bg-white p-0.5"
+      loading="lazy"
+    />
+  )
 }
 
 function EmptyRow({ columns, message }: { columns: number; message: string }) {
@@ -152,7 +171,10 @@ export function ReviewStep({
   const [openConflicts, setOpenConflicts] = useState(extraction.conflicts)
   const [dirty, setDirty] = useState(false)
 
+  const unconfirmedDatePages = pagesWithUnconfirmedDates(timeCards)
+
   const hasQualityIssues =
+    unconfirmedDatePages.length > 0 ||
     extraction.unclassified_candidate_pages.length > 0 ||
     extraction.missing_fields.length > 0 ||
     extraction.ambiguous_fields.length > 0 ||
@@ -184,6 +206,11 @@ export function ReviewStep({
 
   function patchPayslip(key: string, patch: Partial<PayslipEntry>) {
     setPayslips((rows) => rows.map((row) => (row._key === key ? markEdited(row, patch) : row)))
+    setDirty(true)
+  }
+
+  function handleConfirmDates(page: number) {
+    setTimeCards((rows) => confirmPageDates(rows, page))
     setDirty(true)
   }
 
@@ -254,6 +281,28 @@ export function ReviewStep({
             <CardTitle className="text-base">Pendências da extração</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-ink-muted">
+            {unconfirmedDatePages.length > 0 && (
+              <div className="space-y-2">
+                <p>
+                  Datas a confirmar: os horários destas folhas foram lidos, mas as linhas não
+                  confirmaram as datas (folha curta ou data cortada na margem). Confira as datas na
+                  tabela com o documento; os dias só entram na exportação depois da confirmação.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unconfirmedDatePages.map((page) => (
+                    <Button
+                      key={page}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleConfirmDates(page)}
+                    >
+                      Confirmar datas da p. {page}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             {extraction.unclassified_candidate_pages.length > 0 && (
               <div className="space-y-2">
                 <p>
@@ -424,6 +473,7 @@ export function ReviewStep({
                         }
                         aria-label={`Entrada linha ${index + 1}`}
                       />
+                      <CellCrop jobId={extraction.job_id} row={row} field="clock_in" />
                     </TableCell>
                     <TableCell>
                       <input
@@ -434,6 +484,7 @@ export function ReviewStep({
                         }
                         aria-label={`Saída linha ${index + 1}`}
                       />
+                      <CellCrop jobId={extraction.job_id} row={row} field="clock_out" />
                     </TableCell>
                     <TableCell className="space-y-1">
                       <input

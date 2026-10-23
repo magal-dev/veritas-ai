@@ -34,6 +34,21 @@ export function markEdited<T extends ReviewedRow>(row: T, patch: Partial<NoInfer
   }
 }
 
+/** Páginas com registros de data ainda não confirmada (ex.: folha curta lida no servidor). */
+export function pagesWithUnconfirmedDates(rows: TimeCardEntry[]): number[] {
+  const pages = rows.filter((row) => row.ambiguous_fields.includes('date')).map((row) => row.source_page)
+  return [...new Set(pages)].sort((a, b) => a - b)
+}
+
+/** O perito conferiu no documento que as datas montadas da página estão certas. */
+export function confirmPageDates<T extends TimeCardEntry>(rows: T[], page: number): T[] {
+  return rows.map((row) =>
+    row.source_page === page && row.ambiguous_fields.includes('date')
+      ? { ...row, ambiguous_fields: row.ambiguous_fields.filter((name) => name !== 'date') }
+      : row,
+  )
+}
+
 type ParsedConflict =
   | { kind: 'time_card'; date: string }
   | { kind: 'payslip'; competence: string; itemName: string }

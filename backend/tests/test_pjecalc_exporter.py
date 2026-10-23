@@ -91,6 +91,51 @@ def test_jornada_drops_incomplete_shift_and_reports_it():
     assert "1 registro(s) com data inválida" in readme
 
 
+def test_jornada_does_not_export_unread_ocr_day_as_day_off():
+    # Saída do OCR local do cartão escaneado: célula duvidosa vazia em ambiguous_fields e
+    # dia do período sem linha lida. Nenhum dos dois pode virar linha de folga.
+    extraction = ExtractionResult(
+        job_id=uuid4(),
+        time_cards=[
+            _card("2025-07-21", clock_in="10:00", clock_out="17:01"),
+            _card("2025-07-22", clock_out="15:02", ambiguous_fields=["clock_in"]),
+            _card("2025-07-23", ambiguous_fields=["clock_in", "clock_out"]),
+            _card("2025-07-26"),  # folga lida como folga: linha vazia
+        ],
+    )
+    export = PjeCalcExporter().build(extraction)
+    rows = _rows(export.files[JORNADA_FILENAME], "iso-8859-1")
+    assert rows[1:] == ["21/07/2025;10:00;17:01;;;;;;;;;;", "26/07/2025;;;;;;;;;;;;"]
+    assert export.summary.unread_times == 3
+    assert export.summary.omitted_days == 2
+    readme = export.files[README_FILENAME].decode("utf-8-sig")
+    assert "3 horário(s) marcados para conferir" in readme
+
+
+def test_jornada_skips_unconfirmed_dates_until_review_confirms():
+    pending = _card("2025-08-01", clock_in="08:00", clock_out="15:00", ambiguous_fields=["date"])
+    extraction = ExtractionResult(job_id=uuid4(), time_cards=[pending])
+    export = PjeCalcExporter().build(extraction)
+    assert _rows(export.files[JORNADA_FILENAME], "iso-8859-1")[1:] == []
+    assert export.summary.unconfirmed_dates == 1
+    assert "1 registro(s) com data não confirmada" in export.files[README_FILENAME].decode("utf-8-sig")
+
+    confirmed = pending.model_copy(update={"ambiguous_fields": []})
+    export = PjeCalcExporter().build(ExtractionResult(job_id=uuid4(), time_cards=[confirmed]))
+    assert _rows(export.files[JORNADA_FILENAME], "iso-8859-1")[1:] == ["01/08/2025;08:00;15:00;;;;;;;;;;"]
+
+
+def test_jornada_exports_ocr_day_once_review_fills_it():
+    # A revisão tira o campo de ambiguous_fields quando o perito o preenche.
+    extraction = ExtractionResult(
+        job_id=uuid4(),
+        time_cards=[_card("2025-07-22", clock_in="08:01", clock_out="15:02", ambiguous_fields=[])],
+    )
+    export = PjeCalcExporter().build(extraction)
+    assert _rows(export.files[JORNADA_FILENAME], "iso-8859-1")[1:] == ["22/07/2025;08:01;15:02;;;;;;;;;;"]
+    assert export.summary.unread_times == 0
+
+
 def test_jornada_merges_same_day_records_up_to_six_shifts():
     cards = [
         _card("2021-05-03", clock_in=f"{hour:02d}:00", clock_out=f"{hour:02d}:30")

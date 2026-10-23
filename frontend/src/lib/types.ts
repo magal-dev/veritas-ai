@@ -18,6 +18,8 @@ export type TimeCardEntry = {
   confidence: number
   missing_fields: string[]
   ambiguous_fields: string[]
+  /** Campo → id do recorte da célula (cartão lido por OCR local); só existe na sessão. */
+  review_crops?: Record<string, string>
 }
 
 export type PayslipEntry = {
