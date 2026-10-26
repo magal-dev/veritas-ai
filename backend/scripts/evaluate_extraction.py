@@ -29,8 +29,11 @@ Uso (a partir de backend/):
   python scripts/evaluate_extraction.py processo.pdf gabarito.json
   python scripts/evaluate_extraction.py processo.pdf gabarito.json --json metricas.json
   python scripts/evaluate_extraction.py processo.pdf gabarito.json --local-only
+  python scripts/evaluate_extraction.py processo.pdf gabarito.json --no-ocr
 
-Sem GEMINI_API_KEY (ou com --local-only) só a triagem (camadas 1–2) é medida.
+Sem GEMINI_API_KEY (ou com --local-only) só a triagem (camadas 1–2) é medida. O cartão
+escaneado passa pelo OCR local como em produção (TIME_CARD_OCR + Tesseract); --no-ocr mede a
+linha de base com a página inteira no Gemini.
 """
 
 from __future__ import annotations
@@ -51,6 +54,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.config import settings  # noqa: E402
 from pipeline.classifier import StubDocumentClassifier, build_classifier  # noqa: E402
 from pipeline.extractor import LocalDocumentExtractor  # noqa: E402
+from pipeline.time_card_ocr import (  # noqa: E402
+    LocalTimeCards,
+    TimeCardReader,
+    build_time_card_reader,
+    summary,
+)
 from pipeline.validator import (  # noqa: E402
     SchemaExtractionValidator,
     _normalize_label,
@@ -205,6 +214,12 @@ class TimeCardMetrics:
     per_field_accuracy: dict[str, float | None]
     extra_days: int
     hallucinated_fields: int
+    # Horário marcado no documento: vazio (fica para a revisão) ou com valor errado (erro
+    # sem aviso, o que mais pesa: vai para o PJe-Calc se o perito não conferir).
+    expected_marks: int = 0
+    empty_marks: int = 0
+    wrong_marks: int = 0
+    unconfirmed_date_days: int = 0
 
 
 def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> TimeCardMetrics:
@@ -217,7 +232,7 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
     expected_dates = {row.date for row in truth.time_cards}
     per_field_ok = {name: 0 for name in TIME_FIELDS}
     per_field_total = {name: 0 for name in TIME_FIELDS}
-    hallucinated = 0
+    hallucinated = marks = empty = wrong = 0
     found = 0
     for row in truth.time_cards:
         entry = by_date.get(row.date)
@@ -232,6 +247,9 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
                 hallucinated += got is not None
             else:
                 per_field_ok[name] += got == want
+                marks += 1
+                empty += got is None
+                wrong += got is not None and got != want
 
     total = sum(per_field_total.values())
     correct = sum(per_field_ok.values())
@@ -245,6 +263,10 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
         per_field_accuracy={name: _ratio(per_field_ok[name], per_field_total[name]) for name in TIME_FIELDS},
         extra_days=sum(1 for iso in by_date if iso not in expected_dates),
         hallucinated_fields=hallucinated,
+        expected_marks=marks,
+        empty_marks=empty,
+        wrong_marks=wrong,
+        unconfirmed_date_days=sum(1 for entry in by_date.values() if "date" in entry.ambiguous_fields),
     )
 
 
@@ -307,6 +329,10 @@ class EvaluationReport:
     time_cards: TimeCardMetrics | None
     payslips: PayslipMetrics | None
     open_conflicts: int | None
+    # Cartão escaneado lido no servidor (contagens de time_card_ocr.summary) e páginas que
+    # foram ao Gemini inteiras.
+    local_ocr: dict[str, int] | None = None
+    pages_sent_whole: int | None = None
 
 
 def build_report(
@@ -316,7 +342,9 @@ def build_report(
     overflow: list[int],
     timings: dict[str, float],
     gemini_used: bool,
+    local: LocalTimeCards | None = None,
 ) -> EvaluationReport:
+    local_pages = len(local.pages) if local is not None else 0
     return EvaluationReport(
         pdf_page_count=extraction.pdf_page_count,
         gemini_call_count=extraction.gemini_call_count,
@@ -329,23 +357,44 @@ def build_report(
         time_cards=score_time_cards(truth, extraction.time_cards) if gemini_used else None,
         payslips=score_payslips(truth, extraction.payslips) if gemini_used else None,
         open_conflicts=len(extraction.conflicts) if gemini_used else None,
+        local_ocr=summary(local) if local is not None else None,
+        pages_sent_whole=len(candidates) - local_pages if gemini_used else None,
     )
 
 
 # ---------------------------------------------------------------- execução
 
 
-def run(pdf_path: Path, truth: GroundTruth, local_only: bool) -> EvaluationReport:
+class _RecordingReader:
+    """Repassa ao leitor de produção e guarda o resultado para as contagens do relatório."""
+
+    def __init__(self, inner: TimeCardReader) -> None:
+        self._inner = inner
+        self.result: LocalTimeCards | None = None
+
+    def read(self, pdf_path: Path, page_numbers: list[int]) -> LocalTimeCards:
+        self.result = self._inner.read(pdf_path, page_numbers)
+        return self.result
+
+
+def run(pdf_path: Path, truth: GroundTruth, local_only: bool, use_ocr: bool = True) -> EvaluationReport:
     timings: dict[str, float] = {}
 
     started = time.perf_counter()
     signals = LocalDocumentExtractor().extract(pdf_path)
     timings["triage"] = time.perf_counter() - started
 
+    # Mesmo caminho de produção: cartão escaneado reconhecido passa pelo OCR local.
+    inner = build_time_card_reader(settings.time_card_ocr and use_ocr, settings.tesseract_cmd)
+    reader = _RecordingReader(inner) if inner is not None else None
     classifier = (
         StubDocumentClassifier()
         if local_only
-        else build_classifier(api_key=settings.gemini_api_key, model_name=settings.gemini_model)
+        else build_classifier(
+            api_key=settings.gemini_api_key,
+            model_name=settings.gemini_model,
+            time_card_reader=reader,  # type: ignore[arg-type]
+        )
     )
     gemini_used = not isinstance(classifier, StubDocumentClassifier)
 
@@ -377,6 +426,7 @@ def run(pdf_path: Path, truth: GroundTruth, local_only: bool) -> EvaluationRepor
         list(signals.overflow_candidate_pages),
         timings,
         gemini_used,
+        reader.result if reader is not None else None,
     )
 
 
@@ -414,6 +464,15 @@ def format_report(report: EvaluationReport) -> str:
         "  por campo: "
         + " · ".join(f"{name} {_pct(value)}" for name, value in t.per_field_accuracy.items()),
         f"  dias extras: {t.extra_days} · horários inventados: {t.hallucinated_fields}",
+        f"  marcações do documento: {t.expected_marks} · vazias (revisão): {t.empty_marks}"
+        f" · erradas sem aviso: {t.wrong_marks} · dias com data a confirmar: {t.unconfirmed_date_days}",
+        "",
+        "OCR local do cartão escaneado",
+        "  " + (
+            " · ".join(f"{key} {value}" for key, value in report.local_ocr.items())
+            if report.local_ocr is not None else "não usado (desligado ou sem Tesseract)"
+        ),
+        f"  páginas enviadas inteiras ao Gemini: {report.pages_sent_whole}",
         "",
         "Holerite",
         f"  verbas encontradas: {p.found_items}/{p.expected_items} ({_pct(p.item_recall)})"
@@ -432,11 +491,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("gabarito", type=Path)
     parser.add_argument("--json", type=Path, help="grava as métricas (só números) em JSON")
     parser.add_argument("--local-only", action="store_true", help="não chama o Gemini")
+    parser.add_argument("--no-ocr", action="store_true",
+                        help="sem OCR local: cartão escaneado vai inteiro ao Gemini (linha de base)")
     args = parser.parse_args(argv)
 
     logging.getLogger("veritas_ai").setLevel(logging.WARNING)
     truth = parse_ground_truth(json.loads(args.gabarito.read_text(encoding="utf-8")))
-    report = run(args.pdf, truth, local_only=args.local_only)
+    report = run(args.pdf, truth, local_only=args.local_only, use_ocr=not args.no_ocr)
     print(format_report(report))
     if args.json:
         args.json.write_text(json.dumps(asdict(report), indent=2, ensure_ascii=False), encoding="utf-8")

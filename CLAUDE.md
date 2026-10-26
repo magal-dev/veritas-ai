@@ -34,6 +34,8 @@ python scripts/test_sample_pdf.py        # POST /jobs + GET /preview e imprime o
 python scripts/benchmark_pipeline.py 300 # tempo da triagem local (sem Gemini) em PDF sintético
 python scripts/evaluate_extraction.py processo.pdf gabarito.json  # métricas contra gabarito (PDF real fica fora do repo)
 python scripts/evaluate_cell_fallback.py gabarito.json folha*.jpg   # cartão escaneado via OCR local; --send mede com o Gemini
+python scripts/generate_synthetic_cases.py ../avaliacao-sintetica --cases 24   # processos fictícios + gabarito
+python scripts/evaluate_synthetic.py ../avaliacao-sintetica         # mede em lote (retoma; ritmo da cota gratuita)
 
 # Frontend (a partir de frontend/)
 npm install

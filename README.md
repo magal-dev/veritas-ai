@@ -218,10 +218,14 @@ python scripts/test_sample_pdf.py          # POST /jobs + GET /preview e imprime
 # Medições
 python scripts/benchmark_pipeline.py 300   # tempo da triagem local, sem Gemini
 python scripts/evaluate_models.py          # compara modelos Gemini com gabarito sintético (usa a API)
-python scripts/evaluate_extraction.py processo.pdf gabarito.json [--json m.json] [--local-only]
+python scripts/evaluate_extraction.py processo.pdf gabarito.json [--json m.json] [--local-only] [--no-ocr]
                                            # pipeline completo contra gabarito; imprime só métricas
 python scripts/evaluate_cell_fallback.py gabarito.json folha*.jpg [--send] [--save-crops dir/]
                                            # cartão escaneado: OCR local + faixas anônimas (mesmo código do pipeline)
+python scripts/generate_synthetic_cases.py ../avaliacao-sintetica --cases 24 --seed 1
+                                           # processos fictícios com gabarito automático
+python scripts/evaluate_synthetic.py ../avaliacao-sintetica [--no-ocr] [--limit N] [--rpm 4]
+                                           # mede todos os casos e agrega por layout × digitalização
 
 # Frontend (a partir de frontend/)
 npm run build                              # tsc -b + vite build
@@ -231,7 +235,9 @@ npm test                                   # vitest
 
 Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do cliente `google-genai`.
 
-**Avaliação com processos reais.** O formato do gabarito está no topo de `scripts/evaluate_extraction.py`. A saída tem só contagens e porcentagens (recall/precisão da triagem, acurácia da classificação, horários e verbas corretos, itens inventados, chamadas e tempo). PDFs e gabaritos reais contêm dados pessoais: mantenha-os fora do repositório (a pasta `avaliacao-local/` e arquivos `*.gabarito.json` são ignorados pelo git) e apague-os ao terminar.
+**Avaliação com processos reais.** O formato do gabarito está no topo de `scripts/evaluate_extraction.py`. A saída tem só contagens e porcentagens (recall/precisão da triagem, acurácia da classificação, horários e verbas corretos, itens inventados, chamadas e tempo). PDFs e gabaritos reais contêm dados pessoais: mantenha-os fora do repositório (a pasta `avaliacao-local/` e arquivos `*.gabarito.json` são ignorados pelo git) e apague-os ao terminar. O cartão escaneado passa pelo OCR local como em produção; `--no-ocr` mede a linha de base (página inteira no Gemini). Os horários marcados no documento são separados em corretos, vazios (ficam para a revisão) e errados sem aviso.
+
+**Avaliação com processos sintéticos.** `scripts/generate_synthetic_cases.py` monta processos fictícios (peças de enchimento, holerites e cartões de ponto) e escreve o gabarito junto, sem digitação. Varia o layout do cartão (`relogio`, o layout que o OCR local reconhece, ou `planilha`, que vai inteiro ao Gemini), a digitalização (`nativo`, `leve`, `medio`, `forte`), a jornada, os meses, os feriados, a marcação única e a folha curta de desligamento. A semente recria cada caso, então os PDFs não vão para o repositório (`avaliacao-sintetica/` é ignorada). `scripts/evaluate_synthetic.py` mede todos os casos no ritmo da cota gratuita do Gemini, retoma de onde parou e agrega por layout e digitalização. Limitações: o cartão `relogio` imita o layout das folhas reais medidas (mede robustez dentro dele, não generalização) e o ruído é simulado; as folhas reais seguem como validação de campo, reportada à parte.
 
 **Cartão de ponto escaneado lido no servidor.** `scripts/evaluate_cell_fallback.py` roda o mesmo código do pipeline (`pipeline/time_card_ocr.py` + a chamada de faixas do classificador) contra um gabarito e separa corretos, revisão e errados sem aviso, para o OCR local sozinho e para o pipeline completo (com `--send`). Sem `--send` nada é enviado; `--save-crops` grava exatamente as faixas que sairiam, para inspeção. Aceita as imagens das folhas ou um PDF com `--pages`.
 

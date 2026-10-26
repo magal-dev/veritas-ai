@@ -123,6 +123,19 @@ def test_score_time_cards_fields_extras_and_hallucinations() -> None:
     assert metrics.per_field_accuracy["clock_in"] == 1.0
     assert metrics.extra_days == 1
     assert metrics.hallucinated_fields == 1
+    # 7 marcações no documento: 1 errada sem aviso (17:10), nenhuma vazia.
+    assert (metrics.expected_marks, metrics.empty_marks, metrics.wrong_marks) == (7, 0, 1)
+
+
+def test_score_time_cards_separates_empty_for_review_from_wrong() -> None:
+    truth = parse_ground_truth(GABARITO)
+    pending = _card("2024-03-01", clock_in=None, clock_out="17:05").model_copy(
+        update={"ambiguous_fields": ["date", "clock_in"]}
+    )
+    metrics = score_time_cards(truth, [pending])
+    # Dia de 04/03 ausente: 3 marcações vazias; 01/03: entrada vazia e saída errada.
+    assert (metrics.empty_marks, metrics.wrong_marks) == (4, 1)
+    assert metrics.unconfirmed_date_days == 1
 
 
 def test_score_time_cards_missing_day_counts_as_wrong() -> None:
@@ -185,6 +198,7 @@ def test_main_end_to_end_with_fake_gemini(tmp_path: Path, monkeypatch, capsys) -
     gabarito.write_text(json.dumps(GABARITO), encoding="utf-8")
     output = tmp_path / "metricas.json"
     monkeypatch.setattr(evaluation, "build_classifier", lambda **_: _FakeClassifier())
+    monkeypatch.setattr(evaluation, "build_time_card_reader", lambda *_: None)
 
     assert main([str(pdf), str(gabarito), "--json", str(output)]) == 0
 
@@ -201,7 +215,38 @@ def test_main_end_to_end_with_fake_gemini(tmp_path: Path, monkeypatch, capsys) -
         assert leaked not in output.read_text(encoding="utf-8")
 
 
-def test_main_local_only_measures_only_triage(tmp_path: Path, capsys) -> None:
+def test_main_passes_the_production_time_card_reader(tmp_path: Path, monkeypatch, capsys) -> None:
+    pdf = tmp_path / "processo.pdf"
+    _write_pdf(pdf)
+    gabarito = tmp_path / "gabarito.json"
+    gabarito.write_text(json.dumps(GABARITO), encoding="utf-8")
+    received: dict[str, object] = {}
+
+    class _Reader:
+        def read(self, pdf_path, page_numbers):
+            return evaluation.LocalTimeCards(unrecognized_pages=list(page_numbers))
+
+    def fake_classifier(**kwargs):
+        received.update(kwargs)
+        if kwargs["time_card_reader"] is not None:
+            kwargs["time_card_reader"].read(pdf, [2])
+        return _FakeClassifier()
+
+    monkeypatch.setattr(evaluation, "build_time_card_reader", lambda enabled, _: _Reader() if enabled else None)
+    monkeypatch.setattr(evaluation, "build_classifier", fake_classifier)
+
+    assert main([str(pdf), str(gabarito)]) == 0
+    printed = capsys.readouterr().out
+    assert received["time_card_reader"] is not None
+    assert "unrecognized 1" in printed
+    assert "páginas enviadas inteiras ao Gemini: 2" in printed
+
+    assert main([str(pdf), str(gabarito), "--no-ocr"]) == 0
+    assert received["time_card_reader"] is None
+
+
+def test_main_local_only_measures_only_triage(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(evaluation, "build_time_card_reader", lambda *_: None)
     pdf = tmp_path / "processo.pdf"
     _write_pdf(pdf)
     gabarito = tmp_path / "gabarito.json"

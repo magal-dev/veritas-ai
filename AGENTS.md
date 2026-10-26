@@ -128,7 +128,7 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 
 **Camada 3 — Gemini:** só páginas suspeitas, renderizadas como imagem (JPEG em escala de cinza, 150 DPI). As chamadas rodam em paralelo (lotes de até 5 páginas por chamada, máx. 5 chamadas = 25 candidatas; timeout de 90 s e até 3 tentativas em 429/5xx). O lote dilui o custo fixo da instrução e a latência é a do lote mais lento, não a soma. Classificar `CARTAO_PONTO | HOLERITE | IRRELEVANTE` e extrair JSON. Meta: 2 a 5 chamadas por processo.
 
-**Cartão de ponto escaneado (`pipeline/time_card_ocr.py`):** as páginas visuais candidatas passam primeiro pelo OCR local (Tesseract). Se o layout é reconhecido (período impresso, linhas com dia da semana, colunas Ent/Sai), a página vira registros sem ir ao Gemini. Se as datas não se confirmam pelas próprias linhas (mês impresso, dia da semana; típico de folha curta de desligamento), a página continua aqui: os horários seguem o mesmo fluxo e todos os registros dela recebem `date` em `ambiguous_fields`, para o perito confirmar na revisão; a exportação não leva esses dias antes disso. A jornada observada usa só páginas com datas confirmadas:
+**Cartão de ponto escaneado (`pipeline/time_card_ocr.py`):** as páginas visuais candidatas passam primeiro pelo OCR local (Tesseract). Se o layout é reconhecido (período impresso, linhas com dia da semana, colunas Ent/Sai), a página vira registros sem ir ao Gemini. Se as datas não se confirmam pelas próprias linhas (mês impresso, dia da semana; típico de folha curta de desligamento), a página continua aqui: os horários seguem o mesmo fluxo e todos os registros dela recebem `date` em `ambiguous_fields`, para o perito confirmar na revisão; a exportação não leva esses dias antes disso. Um ano do período mal lido ("2025" → "2024") é corrigido pelo ano impresso nas linhas, quando a maioria delas discorda. A jornada observada usa só páginas com datas confirmadas:
 
 - Três leituras do horário (página + recorte só dígitos, com e sem binarização) iguais e a até 75 min da jornada observada (mediana por dia da semana) = aceito localmente.
 - Colunas com célula duvidosa vão ao Gemini como faixa vertical (4 faixas por chamada), com as células aprovadas pela trava em ordem embaralhada. A leitura vale só perto da jornada; nas células aceitas localmente, uma leitura diferente do Gemini manda o horário para revisão (as três leituras do Tesseract erram juntas quando o pixel é o mesmo).
@@ -137,7 +137,7 @@ E contar padrões tabulares por regex: horários (`08:00`) e valores monetários
 
 **Trilha visual (PDF escaneado):** página com até 200 caracteres não brancos de texto extraível e alguma imagem embutida, ou com imagem cobrindo ≥ 85% da página e sem sinal de texto, é página visual. Ela é pontuada sem API por um pixmap cinza de 72 DPI: proporção de tinta, faixas de linhas com tinta e traços horizontais. Página em branco ou carimbo isolado não entra. Vizinho ±1 só entra se também for página visual (continuação de cartão escaneado). `extract_tables` nunca roda em página só imagem. Candidatas de texto têm prioridade; as visuais ocupam as vagas restantes até 25, e o Gemini faz o OCR delas na camada 3. Uma petição escaneada pode ocupar uma vaga restante e é classificada como `IRRELEVANTE`.
 
-Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`. Acurácia ponta a ponta contra gabarito feito à mão: `python scripts/evaluate_extraction.py processo.pdf gabarito.json` (só métricas na saída; PDF e gabarito reais ficam fora do repositório).
+Medição da triagem local sem Gemini: `python scripts/benchmark_pipeline.py [paginas]`. Acurácia ponta a ponta contra gabarito feito à mão: `python scripts/evaluate_extraction.py processo.pdf gabarito.json` (só métricas na saída; PDF e gabarito reais ficam fora do repositório). Em escala, com processos fictícios: `scripts/generate_synthetic_cases.py` + `scripts/evaluate_synthetic.py` (layouts e níveis de digitalização variados; o layout reconhecido pelo OCR é imitação das folhas reais, então não mede generalização).
 
 As camadas 1–3 estão implementadas. `classifier.py` não deve ser chamado para o PDF inteiro. Sem `GEMINI_API_KEY`, o stub marca candidatas como não classificadas.
 
@@ -165,6 +165,7 @@ Já existe:
 - Descarte de PDF/exportação/sessão
 - Testes do frontend (Vitest) para a lógica de revisão e o cliente da API
 - Script de avaliação ponta a ponta contra gabarito (`scripts/evaluate_extraction.py`)
+- Gerador de processos sintéticos com gabarito automático e avaliação em lote (`scripts/generate_synthetic_cases.py`, `scripts/evaluate_synthetic.py`)
 
 TODO (trabalho futuro):
 

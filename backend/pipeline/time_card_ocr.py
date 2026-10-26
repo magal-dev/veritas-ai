@@ -381,10 +381,12 @@ def _read_period(text: str) -> tuple[date, date, bool] | None:
 
 
 def _printed_months(rows: list[_Row]) -> list[int | None]:
-    """Mês do fragmento de data de cada linha ("1/08/2025" → 8); None se ilegível."""
+    """Mês do fragmento de data de cada linha ("1/08/2025" ou "21/08/2025" → 8); None se ilegível."""
     months: list[int | None] = []
     for row in rows:
-        found = re.search(r"(\d{2})/\d{2,4}", row.fragment.upper().translate(OCR_DIGITS))
+        text = row.fragment.upper().translate(OCR_DIGITS)
+        # Data inteira: o mês é o segundo grupo. Dia cortado na margem: o primeiro.
+        found = re.search(r"\d{2}/(\d{2})/\d{2,4}", text) or re.search(r"(\d{2})/\d{2,4}", text)
         months.append(int(found[1]) if found and 1 <= int(found[1]) <= 12 else None)
     return months
 
@@ -421,6 +423,51 @@ def _dates_agree(rows: list[_Row], days: list[date], start: date, one_row_per_da
     return days[0] == start
 
 
+def _assign_days(rows: list[_Row], start: date, end: date) -> tuple[list[date], list[date], bool]:
+    """(dias do período, data de cada linha, se a ordem das linhas dá a data)."""
+    period_days = [start + timedelta(days=n) for n in range((end - start).days + 1)]
+    if len(rows) == len(period_days):
+        # Uma linha por dia (inclusive folgas e "Não Admitido"): a ordem dá a data, mesmo
+        # que o dia da semana tenha sido mal lido.
+        return period_days, period_days, True
+    # O dia vem cortado na margem; a data sai do período + dia da semana. Sincronizar pelo
+    # dia da semana evita que uma linha perdida desloque todas as seguintes.
+    days, cursor = [], start
+    for row in rows:
+        for _ in range(7):
+            if WEEKDAYS[cursor.weekday()] == row.weekday:
+                break
+            cursor += timedelta(days=1)
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return period_days, days, False
+
+
+def _year_shift(rows: list[_Row], days: list[date]) -> int:
+    """Anos a somar ao período (-1, 0 ou 1) segundo o ano impresso nas linhas."""
+    years: list[tuple[int, date]] = []
+    for row, day in zip(rows, days):
+        found = re.search(r"/\d{2}/(\d{4})", row.fragment.upper().translate(OCR_DIGITS))
+        if found:
+            years.append((int(found[1]), day))
+    if len(years) < MIN_ROWS:
+        return 0
+
+    def agreement(shift: int) -> int:
+        return sum(year == day.year + shift for year, day in years)
+
+    best = max((-1, 1), key=agreement)
+    # Maioria clara: um ano isolado mal lido não move o período.
+    return best if agreement(best) > agreement(0) and agreement(best) >= 0.6 * len(years) else 0
+
+
+def _add_years(day: date, years: int) -> date:
+    try:
+        return day.replace(year=day.year + years)
+    except ValueError:  # 29/02 em ano não bissexto
+        return day.replace(year=day.year + years, day=28)
+
+
 def parse_page(lines: list[list[Word]], page_number: int) -> TimeCardPage | None:
     """Monta a tabela do cartão a partir das linhas do OCR; None se o layout não bater.
 
@@ -436,24 +483,13 @@ def parse_page(lines: list[list[Word]], page_number: int) -> TimeCardPage | None
         return None
 
     page = TimeCardPage(page_number=page_number, rows=len(rows), columns=columns)
-    period_days = [start + timedelta(days=n) for n in range((end - start).days + 1)]
-    if len(rows) == len(period_days):
-        # Uma linha por dia (inclusive folgas e "Não Admitido"): a ordem dá a data, mesmo
-        # que o dia da semana tenha sido mal lido.
-        days = period_days
-        weekdays_count = True
-    else:
-        # O dia vem cortado na margem; a data sai do período + dia da semana. Sincronizar pelo
-        # dia da semana evita que uma linha perdida desloque todas as seguintes.
-        days, cursor = [], start
-        for row in rows:
-            for _ in range(7):
-                if WEEKDAYS[cursor.weekday()] == row.weekday:
-                    break
-                cursor += timedelta(days=1)
-            days.append(cursor)
-            cursor += timedelta(days=1)
-        weekdays_count = False
+    period_days, days, weekdays_count = _assign_days(rows, start, end)
+    # Ano do período mal lido ("2025" → "2024"): o ano impresso nas linhas corrige, se bater
+    # melhor com as datas deslocadas de um ano do que com as montadas.
+    shift = _year_shift(rows, days)
+    if shift:
+        start, end = _add_years(start, shift), _add_years(end, shift)
+        period_days, days, weekdays_count = _assign_days(rows, start, end)
     # Datas não confirmadas (dia da semana mal lido empurrou as datas para fora do período, ou
     # os meses impressos não bastam/não batem) não descartam a página: ela iria inteira ao
     # Gemini. Os horários seguem lidos aqui e a data vai para a revisão.
@@ -606,6 +642,10 @@ def apply_gemini(cells: Iterable[Cell], schedule: Schedule) -> None:
         if cell.source == "local" and cell.gemini_read and cell.gemini_read != cell.value:
             cell.value, cell.source = None, None
             continue
+        # Sem veto das leituras do Tesseract numa célula duvidosa: medido nas folhas reais,
+        # vetar o Gemini quando as releituras discordam dele (por maioria, ou só quando as duas
+        # concordam entre si) triplicou a revisão sem reduzir os erros sem aviso. Na impressão
+        # matricial o Tesseract diverge o tempo todo e o Gemini acerta quase todas.
         if cell.value is None and plausible(cell.gemini_read, cell, schedule, require_schedule=True):
             cell.value, cell.source = cell.gemini_read, "gemini"
             cell.slot = _slot_for(cell.gemini_read, cell)  # type: ignore[arg-type]

@@ -39,3 +39,6 @@ pytest-report.xml
 # Avaliação com processos reais (dados pessoais; nunca commitar)
 avaliacao-local/
 *.gabarito.json
+
+# Casos sintéticos gerados (recriáveis pela semente)
+avaliacao-sintetica/
