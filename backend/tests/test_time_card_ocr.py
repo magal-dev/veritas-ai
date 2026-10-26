@@ -174,6 +174,31 @@ def test_parse_page_flags_dates_that_disagree_with_printed_months():
     assert parse_page(_sheet(), page_number=1).dates_confirmed  # type: ignore[union-attr]
 
 
+def test_parse_page_confirms_dates_printed_in_full():
+    # Data inteira na linha ("21/07/2025"): o mês é o segundo grupo, não o dia.
+    lines = _sheet()
+    rows = [line for line in lines[2:] if len(line) > 1 and weekday_of(line[1].text)]
+    for offset, line in enumerate(rows):
+        full = f"{START + timedelta(days=offset):%d/%m/%Y}"
+        line[0] = Word(line[0].x, line[0].y, line[0].w, line[0].h, full, line[0].line)
+    page = parse_page(lines, page_number=1)
+    assert page is not None and page.dates_confirmed
+
+
+def test_parse_page_fixes_misread_period_year_from_the_rows():
+    # "2025" lido como "2024" no período: o ano impresso nas linhas corrige.
+    page = parse_page(_sheet(period="21/07/2024 à 20/08/2024"), page_number=1)
+    assert page is not None and page.dates_confirmed
+    assert page.work_days[0] == "2025-07-21"
+
+
+def test_parse_page_keeps_period_that_crosses_the_year():
+    start, end = date(2024, 12, 23), date(2025, 1, 22)  # segunda-feira a quarta-feira
+    page = parse_page(_sheet(start, end), page_number=1)
+    assert page is not None and page.dates_confirmed
+    assert page.work_days[0] == "2024-12-23"
+
+
 def test_parse_page_keeps_short_sheet_with_unconfirmed_dates():
     # Folha parcial (desligamento): poucas linhas, meses impressos insuficientes para confirmar.
     end = START + timedelta(days=7)
