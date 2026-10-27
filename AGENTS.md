@@ -59,7 +59,7 @@ Não substitua estes componentes salvo limitação técnica real e justificada.
 | Migrations | Alembic |
 | Banco | PostgreSQL (Neon em nuvem; Compose na máquina local) |
 | Exportação | CSV + zip da biblioteca padrão (o PJe-Calc não importa `.xlsx`; openpyxl foi removido) |
-| Datas | pendulum + `datetime` nativo |
+| Datas | `datetime` nativo |
 
 TypeScript no frontend é tipagem sobre React, não troca de stack. Não introduza Next.js, Celery, Redis, outro LLM ou outro banco.
 

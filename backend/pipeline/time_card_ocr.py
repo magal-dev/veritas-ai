@@ -783,12 +783,18 @@ class TimeCardReader:
             return None
 
 
+_unavailable_logged: set[str] = set()
+
+
 def build_time_card_reader(enabled: bool, command: str) -> TimeCardReader | None:
     """Leitor local, ou None (desligado ou sem Tesseract): aí o cartão vai como página."""
     if not enabled:
         return None
     if not tesseract_available(command):
-        logger.warning("time_card_ocr.unavailable reason=tesseract_or_por_missing")
+        # A sonda em si já é cacheada; este aviso rodaria de novo a cada request.
+        if command not in _unavailable_logged:
+            _unavailable_logged.add(command)
+            logger.warning("time_card_ocr.unavailable reason=tesseract_or_por_missing")
         return None
     return TimeCardReader(tesseract_runner(command))
 

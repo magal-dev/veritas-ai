@@ -1,4 +1,5 @@
 import io
+import logging
 import subprocess
 from datetime import date, timedelta
 from pathlib import Path
@@ -556,3 +557,15 @@ def test_build_time_card_reader_requires_tesseract_with_portuguese(monkeypatch):
     monkeypatch.setattr(ocr.subprocess, "run", broken)
     assert build_time_card_reader(True, "tess-quebrado") is None
     ocr.tesseract_available.cache_clear()
+
+
+def test_missing_tesseract_is_logged_once(monkeypatch, caplog):
+    ocr._unavailable_logged.clear()
+    ocr.tesseract_available.cache_clear()
+    monkeypatch.setattr(ocr.shutil, "which", lambda command: None)
+
+    with caplog.at_level(logging.WARNING):
+        assert build_time_card_reader(True, "ausente") is None
+        assert build_time_card_reader(True, "ausente") is None
+
+    assert caplog.text.count("time_card_ocr.unavailable") == 1

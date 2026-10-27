@@ -58,7 +58,7 @@ npm test                                 # vitest (lógica de revisão e cliente
 
 Os CSVs do PJe-Calc (`pipeline/pjecalc_exporter.py`) são gerados em memória sob demanda em `GET /jobs/{id}/export`, como `.zip`.
 
-Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `EMPTY_FILE`, `GEMINI_ERROR`, `PIPELINE_ERROR`, `EXTRACTION_MISSING`). O frontend depende deles, então não renomeie sem atualizar `frontend/src/lib/api.ts` e os componentes.
+Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `EMPTY_FILE`, `PIPELINE_ERROR`, `EXTRACTION_MISSING`, `SESSION_LIMIT`). `PIPELINE_ERROR` sai como HTTP 500 com esse `error_code`. Se o Gemini não classifica nenhuma página, o job conclui e as candidatas ficam em `unclassified_candidate_pages`. O frontend depende dos códigos, então não renomeie sem atualizar `frontend/src/lib/api.ts` e os componentes.
 
 ## Onde mexer
 

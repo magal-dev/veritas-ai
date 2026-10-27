@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends
@@ -7,13 +8,22 @@ from core.database import SessionLocal, database_is_reachable
 from repositories.processing_run_repository import ProcessingRunRepository
 from services.job_service import JobService
 
+# Sucesso fica em cache: o banco que cai no meio da sessão só faz o metadado ser omitido.
+# Falha é reavaliada, senão um Postgres que sobe depois nunca volta a ser usado.
 _db_enabled: bool | None = None
+_db_checked_at = 0.0
+DB_RECHECK_SECONDS = 30
 
 
 async def db_enabled() -> bool:
-    global _db_enabled
-    if _db_enabled is None:
-        _db_enabled = await database_is_reachable()
+    global _db_enabled, _db_checked_at
+    now = time.monotonic()
+    if _db_enabled is True:
+        return True
+    if _db_enabled is False and now - _db_checked_at < DB_RECHECK_SECONDS:
+        return False
+    _db_enabled = await database_is_reachable()
+    _db_checked_at = now
     return _db_enabled
 
 

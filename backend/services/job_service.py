@@ -7,14 +7,16 @@ import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
+from typing import NoReturn
 
 from fastapi import UploadFile
 
 from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
-from pipeline.classifier import build_classifier
+from pipeline.classifier import DocumentClassifier, build_classifier
 from pipeline.extractor import LocalDocumentExtractor
 from pipeline.pjecalc_exporter import PjeCalcExporter
 from pipeline.time_card_ocr import build_time_card_reader
@@ -22,26 +24,54 @@ from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
 from repositories.processing_run_repository import ProcessingRunRepository
 from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
 from schemas.jobs import JobStatus
-from services.session_store import JobSession, session_store
+from services.session_store import JobSession, SessionCapacityError, session_store
 
 
-class InvalidPdfError(Exception):
-    def __init__(self, error_code: str) -> None:
+class JobError(Exception):
+    def __init__(self, error_code: str, status_code: int = 400) -> None:
         super().__init__(error_code)
         self.error_code = error_code
+        self.status_code = status_code
+
+
+class InvalidPdfError(JobError):
+    def __init__(self, error_code: str) -> None:
+        super().__init__(error_code, 400)
+
+
+@lru_cache(maxsize=1)
+def _shared_stages() -> tuple[
+    LocalDocumentExtractor,
+    DocumentClassifier,
+    SchemaExtractionValidator,
+    PjeCalcExporter,
+]:
+    """Extrator, classificador, validador e exportador reutilizados entre requests.
+
+    O cliente do Gemini e o leitor de cartão não precisam nascer de novo a cada
+    rota. O repositório de metadados continua por request.
+    """
+    reader = build_time_card_reader(settings.time_card_ocr, settings.tesseract_cmd)
+    return (
+        LocalDocumentExtractor(),
+        build_classifier(
+            api_key=settings.gemini_api_key,
+            model_name=settings.gemini_model,
+            time_card_reader=reader,
+        ),
+        SchemaExtractionValidator(),
+        PjeCalcExporter(),
+    )
 
 
 class JobService:
     def __init__(self, run_repository: ProcessingRunRepository | None) -> None:
         self._runs = run_repository
-        self._extractor = LocalDocumentExtractor()
-        self._classifier = build_classifier(
-            api_key=settings.gemini_api_key,
-            model_name=settings.gemini_model,
-            time_card_reader=build_time_card_reader(settings.time_card_ocr, settings.tesseract_cmd),
-        )
-        self._validator = SchemaExtractionValidator()
-        self._exporter = PjeCalcExporter()
+        extractor, classifier, validator, exporter = _shared_stages()
+        self._extractor = extractor
+        self._classifier = classifier
+        self._validator = validator
+        self._exporter = exporter
 
     async def create_from_upload(self, upload: UploadFile) -> JobSession:
         self._assert_pdf(upload)
@@ -50,18 +80,11 @@ class JobService:
         tmp_path: Path | None = None
 
         try:
+            if not session_store.has_room():
+                raise JobError("SESSION_LIMIT", 429)
             tmp_path = await self._write_temp_pdf(upload)
             signals = await asyncio.to_thread(self._extractor.extract, tmp_path)
-            try:
-                outcome = await asyncio.to_thread(
-                    self._classifier.classify,
-                    tmp_path,
-                    signals,
-                )
-            except RuntimeError as exc:
-                if str(exc) == "GEMINI_ERROR":
-                    raise InvalidPdfError("GEMINI_ERROR") from exc
-                raise
+            outcome = await asyncio.to_thread(self._classifier.classify, tmp_path, signals)
 
             extraction = ExtractionResult(
                 job_id=job_id,
@@ -78,21 +101,14 @@ class JobService:
                 gemini_call_count=outcome.gemini_call_count,
             )
             extraction = self._validator.validate(extraction)
-        except InvalidPdfError:
+        except JobError:
             raise
         except ValueError as exc:
-            raise InvalidPdfError("INVALID_FILE_TYPE") from exc
-        except Exception:
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            await self._record_run(
-                job_id=job_id,
-                status=RunStatus.FAILED,
-                error_code="PIPELINE_ERROR",
-                duration_ms=duration_ms,
-                finished=True,
-            )
-            logger.exception("job.failed job_id=%s", job_id)
-            raise
+            if str(exc) == "INVALID_PDF":
+                raise InvalidPdfError("INVALID_FILE_TYPE") from exc
+            await self._fail_pipeline(job_id, started, exc)
+        except Exception as exc:
+            await self._fail_pipeline(job_id, started, exc)
         finally:
             await upload.close()
             self._unlink(tmp_path)
@@ -100,6 +116,7 @@ class JobService:
         pipeline_note = _build_pipeline_note(
             candidate_count=extraction.candidate_page_count,
             gemini_calls=extraction.gemini_call_count,
+            classified_count=len(extraction.classifications),
             has_api_key=bool(settings.gemini_api_key.strip()),
         )
 
@@ -111,11 +128,14 @@ class JobService:
             pipeline_note=pipeline_note,
             review_crops=outcome.review_crops,
         )
-        session_store.put(session)
+        try:
+            session_store.put(session)
+        except SessionCapacityError as exc:
+            raise JobError("SESSION_LIMIT", 429) from exc
 
         duration_ms = int((time.perf_counter() - started) * 1000)
         await self._record_run(
-            job_id=job_id,
+            run_id=job_id,
             status=RunStatus.COMPLETED,
             pdf_page_count=extraction.pdf_page_count,
             candidate_page_count=extraction.candidate_page_count,
@@ -224,13 +244,29 @@ class JobService:
         finally:
             handle.close()
 
+    async def _fail_pipeline(self, job_id: uuid.UUID, started: float, exc: BaseException) -> NoReturn:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        await self._record_run(
+            run_id=job_id,
+            status=RunStatus.FAILED,
+            error_code="PIPELINE_ERROR",
+            duration_ms=duration_ms,
+            finished=True,
+        )
+        logger.warning(
+            "job.failed job_id=%s error_type=%s error_code=PIPELINE_ERROR",
+            job_id,
+            type(exc).__name__,
+        )
+        raise JobError("PIPELINE_ERROR", 500) from exc
+
     async def _record_run(self, **kwargs) -> None:
         if self._runs is None:
             return
         try:
             await self._runs.create(**kwargs)
-        except Exception:
-            logger.warning("job.metadata_skipped")
+        except Exception as exc:
+            logger.warning("job.metadata_skipped error_type=%s", type(exc).__name__)
 
     @staticmethod
     def _unlink(path: Path | None) -> None:
@@ -246,6 +282,7 @@ def _build_pipeline_note(
     *,
     candidate_count: int,
     gemini_calls: int,
+    classified_count: int,
     has_api_key: bool,
 ) -> str:
     if not has_api_key:
@@ -258,6 +295,11 @@ def _build_pipeline_note(
             "Triagem local concluída sem páginas candidatas. Páginas escaneadas entram "
             "na triagem quando a imagem tem aspecto de tabela; páginas em branco ou sem "
             "estrutura tabular são ignoradas."
+        )
+    if classified_count == 0:
+        return (
+            "Triagem local concluída. Nenhuma página candidata foi classificada; "
+            f"elas seguem na revisão como não classificadas ({gemini_calls} chamada(s) à API)."
         )
     return (
         f"Triagem local + Gemini concluídas. {candidate_count} página(s) candidata(s), "

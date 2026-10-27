@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pymupdf as fitz
-import pytest
 
 from pipeline.classifier import (
     PAGES_PER_CALL,
@@ -138,7 +137,7 @@ def test_gemini_irrelevante_produces_no_rows(mock_client_cls: MagicMock, tmp_pat
 
 
 @patch("pipeline.classifier.genai.Client")
-def test_gemini_raises_when_all_calls_fail(mock_client_cls: MagicMock, tmp_path: Path):
+def test_gemini_keeps_unclassified_when_all_calls_fail(mock_client_cls: MagicMock, tmp_path: Path):
     pdf_path = tmp_path / "fail.pdf"
     pdf_path.write_bytes(_pdf_bytes())
 
@@ -148,8 +147,38 @@ def test_gemini_raises_when_all_calls_fail(mock_client_cls: MagicMock, tmp_path:
     _client_with(mock_client_cls, respond)
 
     classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-3.5-flash-lite")
-    with pytest.raises(RuntimeError, match="GEMINI_ERROR"):
-        classifier.classify(pdf_path, ExtractionSignals(pdf_page_count=1, candidate_pages=[1]))
+    outcome = classifier.classify(
+        pdf_path,
+        ExtractionSignals(pdf_page_count=2, candidate_pages=[1], overflow_candidate_pages=[2]),
+    )
+
+    assert outcome.classifications == []
+    assert outcome.gemini_call_count == 0
+    assert outcome.unclassified_candidate_pages == [1, 2]
+
+
+@patch("pipeline.classifier.genai.Client")
+def test_gemini_invalid_page_does_not_drop_the_batch(mock_client_cls: MagicMock, tmp_path: Path):
+    pdf_path = _multi_page_pdf(tmp_path, 3)
+    _client_with(
+        mock_client_cls,
+        lambda **kwargs: _mock_response(
+            [
+                {"page_number": 1, "document_type": "NAO_EXISTE", "confidence": 0.9},
+                {"page_number": 2, "document_type": "HOLERITE", "confidence": 2},
+                {"page_number": 3, "document_type": "HOLERITE", "confidence": 0.8},
+            ]
+        ),
+    )
+
+    classifier = GeminiDocumentClassifier(api_key="test-key", model_name="gemini-3.5-flash-lite")
+    outcome = classifier.classify(
+        pdf_path, ExtractionSignals(pdf_page_count=3, candidate_pages=[1, 2, 3])
+    )
+
+    assert outcome.gemini_call_count == 1
+    assert [item.page_number for item in outcome.classifications] == [3]
+    assert outcome.unclassified_candidate_pages == [1, 2]
 
 
 @patch("pipeline.classifier.genai.Client")
