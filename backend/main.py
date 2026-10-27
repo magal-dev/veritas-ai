@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,13 +9,31 @@ from api.jobs import router as jobs_router
 from core.config import settings
 from core.database import database_is_reachable
 from core.logging import logger
+from services.session_store import session_store
+
+SESSION_SWEEP_SECONDS = 60
+
+
+async def _sweep_sessions() -> None:
+    """Tira sessões vencidas da memória mesmo sem outra request."""
+    while True:
+        await asyncio.sleep(SESSION_SWEEP_SECONDS)
+        removed = session_store.purge_expired()
+        if removed:
+            logger.info("session.purged count=%s", removed)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db_ok = await database_is_reachable()
     logger.info("startup database=%s", "connected" if db_ok else "unavailable")
-    yield
+    sweep = asyncio.create_task(_sweep_sessions())
+    try:
+        yield
+    finally:
+        sweep.cancel()
+        with suppress(asyncio.CancelledError):
+            await sweep
 
 
 app = FastAPI(

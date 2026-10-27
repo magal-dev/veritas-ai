@@ -1,5 +1,5 @@
 import { ShieldCheck } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { BrandBar } from '@/components/BrandBar'
 import { DownloadStep } from '@/components/DownloadStep'
@@ -9,6 +9,7 @@ import { ReviewStep } from '@/components/ReviewStep'
 import { Stepper, type FlowStep } from '@/components/Stepper'
 import { UploadStep } from '@/components/UploadStep'
 import { createJob, discardJob, downloadExport, getPreview, updateExtraction } from '@/lib/api'
+import { clearStoredJobId, readStoredJobId, storeJobId } from '@/lib/job-session'
 import type { ApiError, ExtractionResult, ExtractionUpdateBody } from '@/lib/types'
 
 type View = 'home' | 'flow'
@@ -41,10 +42,10 @@ function errorMessage(error: unknown): string {
 }
 
 export default function App() {
-  const [view, setView] = useState<View>('home')
-  const [step, setStep] = useState<FlowStep>('upload')
+  const [view, setView] = useState<View>(() => (readStoredJobId() ? 'flow' : 'home'))
+  const [step, setStep] = useState<FlowStep>(() => (readStoredJobId() ? 'processing' : 'upload'))
   const [session, setSession] = useState<SessionState>(emptySession)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(() => Boolean(readStoredJobId()))
   const [error, setError] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState(false)
   const [reviewSaving, setReviewSaving] = useState(false)
@@ -52,6 +53,7 @@ export default function App() {
   const [reviewRevision, setReviewRevision] = useState(0)
 
   const reset = useCallback(() => {
+    clearStoredJobId()
     setStep('upload')
     setSession(emptySession)
     setBusy(false)
@@ -60,6 +62,31 @@ export default function App() {
     setReviewSaveError(null)
     setReviewSaving(false)
     setReviewRevision(0)
+  }, [])
+
+  useEffect(() => {
+    const jobId = readStoredJobId()
+    if (!jobId) return
+    let active = true
+    getPreview(jobId)
+      .then((preview) => {
+        if (!active) return
+        setSession({ jobId, fileName: '', extraction: preview.extraction })
+        setStep('review')
+      })
+      .catch(() => {
+        clearStoredJobId()
+        if (!active) return
+        setView('home')
+        setStep('upload')
+        setSession(emptySession)
+      })
+      .finally(() => {
+        if (active) setBusy(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   function goTo(next: View) {
@@ -93,6 +120,7 @@ export default function App() {
         /* sessão já pode ter expirado */
       }
     }
+    clearStoredJobId()
     setDiscarded(true)
     setStep('download')
     setSession(emptySession)
@@ -102,9 +130,11 @@ export default function App() {
     setBusy(true)
     setError(null)
     setStep('processing')
+    clearStoredJobId()
     setSession({ jobId: '', fileName: file.name, extraction: null })
     try {
       const created = await createJob(file)
+      storeJobId(created.job_id)
       const preview = await getPreview(created.job_id)
       setSession({
         jobId: created.job_id,
@@ -136,8 +166,9 @@ export default function App() {
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
-      URL.revokeObjectURL(url)
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500)
       await discardJob(session.jobId)
+      clearStoredJobId()
       setDiscarded(true)
       setSession(emptySession)
     } catch (err) {
@@ -186,7 +217,9 @@ export default function App() {
               {step === 'upload' && (
                 <UploadStep busy={busy} error={error} onSubmit={handleUpload} />
               )}
-              {step === 'processing' && <ProcessingStep fileName={session.fileName} />}
+              {step === 'processing' && (
+                <ProcessingStep fileName={session.fileName || 'a sessão anterior'} />
+              )}
               {step === 'review' && session.extraction && (
                 <ReviewStep
                   key={`${session.jobId}-${reviewRevision}`}

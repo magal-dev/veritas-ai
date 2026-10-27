@@ -11,7 +11,7 @@ from schemas.jobs import (
     JobStatus,
     JobStatusResponse,
 )
-from services.job_service import InvalidPdfError, JobService
+from services.job_service import JobError, JobService
 from services.session_store import JobSession
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
@@ -21,7 +21,7 @@ ERROR_MESSAGES = {
     "FILE_TOO_LARGE": "O PDF excede o tamanho máximo permitido.",
     "EMPTY_FILE": "O arquivo enviado está vazio.",
     "PIPELINE_ERROR": "Falha ao processar o PDF. Tente outro arquivo.",
-    "GEMINI_ERROR": "Falha na classificação com Gemini. Verifique a chave da API e tente novamente.",
+    "SESSION_LIMIT": "Há sessões demais em memória. Encerre uma revisão ou aguarde o prazo sem uso.",
 }
 
 
@@ -37,12 +37,12 @@ def _require_session(session: JobSession | None) -> JobSession:
     return session
 
 
-def _http_from_invalid(exc: InvalidPdfError) -> HTTPException:
+def _http_from_job(exc: JobError) -> HTTPException:
     return HTTPException(
-        status_code=400,
+        status_code=exc.status_code,
         detail={
             "error_code": exc.error_code,
-            "message": ERROR_MESSAGES.get(exc.error_code, "Arquivo inválido."),
+            "message": ERROR_MESSAGES.get(exc.error_code, "Falha ao processar."),
         },
     )
 
@@ -54,8 +54,8 @@ async def create_job(
 ) -> JobCreated:
     try:
         session = await service.create_from_upload(file)
-    except InvalidPdfError as exc:
-        raise _http_from_invalid(exc) from exc
+    except JobError as exc:
+        raise _http_from_job(exc) from exc
 
     page_count = session.extraction.pdf_page_count if session.extraction else 0
     return JobCreated(

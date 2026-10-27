@@ -41,7 +41,7 @@ const FLAG_LABEL = {
 const DISCARDED = [
   { item: 'PDF do processo', when: 'apagado ao fim da triagem' },
   { item: 'Arquivos do PJe-Calc', when: 'apagados do servidor após o download' },
-  { item: 'Tabela revisada', when: 'some quando a sessão expira (15 min) ou é encerrada' },
+  { item: 'Tabela revisada', when: 'some após 15 min sem uso, ou quando a revisão é encerrada' },
 ]
 
 const STORED = [

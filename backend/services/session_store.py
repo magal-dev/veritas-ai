@@ -1,4 +1,8 @@
-"""Sessão in-memory com TTL. Conteúdo processual nunca vai ao disco nem ao banco."""
+"""Sessão in-memory com TTL. Conteúdo processual nunca vai ao disco nem ao banco.
+
+O prazo conta a partir do último acesso (leitura ou gravação). Sessões expiradas
+saem em toda leitura e, com o processo ocioso, na varredura do lifespan.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,13 @@ from uuid import UUID
 from core.config import settings
 from schemas.extraction import ExtractionResult
 from schemas.jobs import JobStatus
+
+# Teto de sessões simultâneas: cada uma segura o JSON e os recortes da revisão.
+MAX_JOB_SESSIONS = 8
+
+
+class SessionCapacityError(Exception):
+    """Não cabe mais uma sessão sem descartar outra que ainda está no prazo."""
 
 
 @dataclass
@@ -37,9 +48,17 @@ class SessionStore:
         self._lock = threading.Lock()
         self._jobs: dict[UUID, JobSession] = {}
 
+    def has_room(self) -> bool:
+        with self._lock:
+            self._purge_locked()
+            return len(self._jobs) < MAX_JOB_SESSIONS
+
     def put(self, session: JobSession) -> None:
         with self._lock:
             self._purge_locked()
+            self._touch(session)
+            if session.job_id not in self._jobs and len(self._jobs) >= MAX_JOB_SESSIONS:
+                raise SessionCapacityError()
             self._jobs[session.job_id] = session
 
     def get(self, job_id: UUID) -> JobSession | None:
@@ -48,18 +67,29 @@ class SessionStore:
             session = self._jobs.get(job_id)
             if session is None:
                 return None
-            if session.is_expired:
-                self._jobs.pop(job_id, None)
-                return None
+            self._touch(session)
             return session
 
     def delete(self, job_id: UUID) -> bool:
         with self._lock:
             return self._jobs.pop(job_id, None) is not None
 
+    def purge_expired(self) -> int:
+        with self._lock:
+            before = len(self._jobs)
+            self._purge_locked()
+            return before - len(self._jobs)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._jobs.clear()
+
+    @staticmethod
+    def _touch(session: JobSession) -> None:
+        session.expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.job_ttl_seconds)
+
     def _purge_locked(self) -> None:
-        now = datetime.now(timezone.utc)
-        expired = [key for key, job in self._jobs.items() if job.expires_at <= now]
+        expired = [key for key, job in self._jobs.items() if job.is_expired]
         for key in expired:
             del self._jobs[key]
 

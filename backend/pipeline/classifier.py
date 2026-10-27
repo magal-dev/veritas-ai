@@ -259,9 +259,8 @@ class GeminiDocumentClassifier(DocumentClassifier):
         outcome.unclassified_candidate_pages.extend(failed_pages)
         outcome.unclassified_candidate_pages = sorted(set(outcome.unclassified_candidate_pages))
 
-        if not outcome.classifications:
-            raise RuntimeError("GEMINI_ERROR")
-
+        # Sem classificação alguma a triagem local segue: as candidatas ficam
+        # não classificadas, em vez de o processo inteiro ser descartado.
         logger.info(
             "classifier.complete gemini_call_count=%s classifications=%s failed=%s "
             "local_time_card_pages=%s strips=%s duration_ms=%s",
@@ -363,7 +362,10 @@ class GeminiDocumentClassifier(DocumentClassifier):
             except (TypeError, ValueError):
                 continue
             if page_number in expected and page_number not in results:
-                results[page_number] = _payload_to_outcome(item, page_number)
+                try:
+                    results[page_number] = _payload_to_outcome(item, page_number)
+                except (TypeError, ValueError):
+                    logger.warning("classifier.invalid_page page_number=%s", page_number)
         return results
 
 

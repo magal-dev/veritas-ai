@@ -245,11 +245,11 @@ Os testes nunca chamam o Gemini real: usam o classificador stub ou mocks do clie
 
 - Não há login, cadastro nem histórico de extrações.
 - Nenhum dado extraído do PDF é persistido. O PostgreSQL recebe só metadados operacionais (timestamps, status, contagem de páginas, de candidatas e de chamadas ao Gemini, código de erro), sem nome de arquivo, texto, JSON, CPF ou número de processo.
-- O PDF é apagado ao fim do processamento; a exportação é montada em memória a cada download e nunca é gravada; a sessão em memória expira após `JOB_TTL_SECONDS`.
+- O PDF é apagado ao fim do processamento; a exportação é montada em memória a cada download e nunca é gravada; a sessão em memória expira após `JOB_TTL_SECONDS` sem uso.
 - Apenas as páginas candidatas (até 25 por processo) são enviadas como imagem à API do Gemini; o restante do documento não sai do servidor.
 - Cartão de ponto escaneado reconhecido pelo OCR local não é enviado como página: saem só faixas com células de horário, sem data, nome, cabeçalho ou ordem dos dias. O vínculo de cada linha com o dia e os recortes mostrados na revisão ficam só na sessão em memória.
 - Os logs registram só metadados (`job_id`, contagens, duração), nunca conteúdo das páginas.
-- O navegador guarda apenas a preferência de tema (`localStorage`); nenhum dado do processo.
+- O navegador guarda a preferência de tema (`localStorage`) e, enquanto a revisão está aberta, só o identificador da sessão (`sessionStorage`), para retomá-la depois de recarregar. Nenhum conteúdo do processo fica no navegador.
 - Em produção a comunicação deve ser HTTPS; o ambiente local usa HTTP.
 
 ## Licença

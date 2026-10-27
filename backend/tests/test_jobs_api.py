@@ -1,17 +1,27 @@
 from datetime import datetime, timezone
+import importlib
+import logging
 import zipfile
 from io import BytesIO
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pymupdf as fitz
 from fastapi.testclient import TestClient
 
+from api.deps import get_job_service
+from core.config import settings
 from main import app
-from pipeline.extractor import LocalDocumentExtractor
+from models.processing_run import RunStatus
+from pipeline.classifier import ClassificationOutcome
+from pipeline.extractor import ExtractionSignals, LocalDocumentExtractor
 from pipeline.validator import SchemaExtractionValidator
 from schemas.extraction import Conflict, ExtractionResult, TimeCardEntry
 from schemas.jobs import JobStatus
-from services.session_store import JobSession, session_store
+from services.job_service import JobService, _shared_stages
+from services.session_store import JobSession, SessionCapacityError, session_store
+
+# services/__init__.py reexporta o singleton com o mesmo nome do módulo.
+store = importlib.import_module("services.session_store")
 
 
 def _pdf_bytes(pages: int = 3) -> bytes:
@@ -296,3 +306,132 @@ def test_review_crop_is_served_from_session_only():
     missing = client.get(f"/api/v1/jobs/{extraction.job_id}/crops/abc123")
     assert missing.status_code == 404
     assert missing.json()["detail"]["error_code"] == "CROP_NOT_FOUND"
+
+
+class _RecordingRuns:
+    def __init__(self) -> None:
+        self.created: list[dict] = []
+        self.discarded: list[UUID] = []
+
+    async def create(self, **kwargs) -> None:
+        self.created.append(kwargs)
+
+    async def mark_discarded(self, run_id: UUID) -> None:
+        self.discarded.append(run_id)
+
+
+def _post_pdf(client: TestClient):
+    return client.post(
+        "/api/v1/jobs",
+        files={"file": ("processo.pdf", BytesIO(_pdf_bytes(1)), "application/pdf")},
+    )
+
+
+def test_run_metadata_uses_run_id():
+    runs = _RecordingRuns()
+    app.dependency_overrides[get_job_service] = lambda: JobService(runs)
+    try:
+        client = TestClient(app)
+        response = _post_pdf(client)
+        assert response.status_code == 200, response.text
+        job_id = UUID(response.json()["job_id"])
+        assert runs.created[-1]["run_id"] == job_id
+        assert runs.created[-1]["status"] == RunStatus.COMPLETED
+        assert client.delete(f"/api/v1/jobs/{job_id}").status_code == 204
+        assert runs.discarded == [job_id]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_pipeline_error_returns_stable_code_without_the_exception_text(monkeypatch, caplog):
+    def boom(self, path):
+        raise RuntimeError("cpf 123 secreto")
+
+    monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
+    runs = _RecordingRuns()
+    app.dependency_overrides[get_job_service] = lambda: JobService(runs)
+    try:
+        with caplog.at_level(logging.WARNING, logger="veritas_ai"):
+            response = _post_pdf(TestClient(app))
+        assert response.status_code == 500
+        body = response.json()["detail"]
+        assert body["error_code"] == "PIPELINE_ERROR"
+        assert "secreto" not in response.text
+        assert "secreto" not in caplog.text
+        assert "RuntimeError" in caplog.text
+        assert runs.created[-1]["status"] == RunStatus.FAILED
+        assert runs.created[-1]["error_code"] == "PIPELINE_ERROR"
+        assert "run_id" in runs.created[-1]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_invalid_pdf_value_stays_a_client_error(monkeypatch):
+    def boom(self, path):
+        raise ValueError("INVALID_PDF")
+
+    monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
+    response = _post_pdf(TestClient(app))
+    assert response.status_code == 400
+    assert response.json()["detail"]["error_code"] == "INVALID_FILE_TYPE"
+
+
+def test_other_value_error_is_pipeline_error(monkeypatch):
+    def boom(self, path):
+        raise ValueError("schema quebrado")
+
+    monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
+    response = _post_pdf(TestClient(app))
+    assert response.status_code == 500
+    assert response.json()["detail"]["error_code"] == "PIPELINE_ERROR"
+    assert "schema quebrado" not in response.text
+
+
+def test_failed_classification_keeps_candidates_unclassified(monkeypatch):
+    def fake_extract(self, path):
+        return ExtractionSignals(pdf_page_count=1, candidate_pages=[1])
+
+    def fake_classify(pdf_path, signals):
+        return ClassificationOutcome(unclassified_candidate_pages=list(signals.candidate_pages))
+
+    _shared_stages.cache_clear()
+    classifier = _shared_stages()[1]
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr(LocalDocumentExtractor, "extract", fake_extract)
+    monkeypatch.setattr(classifier, "classify", fake_classify)
+    try:
+        client = TestClient(app)
+        response = _post_pdf(client)
+        assert response.status_code == 200, response.text
+        job_id = response.json()["job_id"]
+        preview = client.get(f"/api/v1/jobs/{job_id}/preview")
+        assert preview.json()["extraction"]["unclassified_candidate_pages"] == [1]
+        note = client.get(f"/api/v1/jobs/{job_id}").json()["pipeline_note"]
+        assert "não classificadas" in note
+    finally:
+        _shared_stages.cache_clear()
+
+
+def test_session_limit_returns_429(monkeypatch):
+    monkeypatch.setattr(store, "MAX_JOB_SESSIONS", 1)
+    _seed_session(ExtractionResult(job_id=uuid4()))
+    response = _post_pdf(TestClient(app))
+    assert response.status_code == 429
+    assert response.json()["detail"]["error_code"] == "SESSION_LIMIT"
+
+
+def test_session_limit_after_processing_returns_429(monkeypatch):
+    monkeypatch.setattr(store.session_store, "has_room", lambda: True)
+
+    def full(_session):
+        raise SessionCapacityError()
+
+    monkeypatch.setattr(store.session_store, "put", full)
+    response = _post_pdf(TestClient(app))
+    assert response.status_code == 429
+    assert response.json()["detail"]["error_code"] == "SESSION_LIMIT"
+
+
+def test_lifespan_cancels_the_session_sweep():
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
