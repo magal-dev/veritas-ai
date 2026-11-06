@@ -192,6 +192,8 @@ Sem Docker/Postgres a aplicação continua utilizável: os jobs ficam só em mem
 
 ## Deploy (teste com usuário real)
 
+Atalho: [Deploy no Render](https://render.com/deploy?repo=https://github.com/magal-dev/veritas-ai/tree/claude/deploy-test-client-dcrjym) abre o passo 2 já com o repositório e a branch.
+
 Uma imagem só (`Dockerfile` na raiz): o FastAPI serve a API e o build do React no mesmo endereço, com o Tesseract `por` instalado. `render.yaml` descreve o serviço no [Render](https://render.com), que dá HTTPS automático. Tudo é feito pelo navegador, inclusive no celular:
 
 1. Entre em render.com com a conta do GitHub e autorize o acesso ao repositório `veritas-ai`.
