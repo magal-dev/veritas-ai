@@ -190,6 +190,24 @@ Preencha `GEMINI_API_KEY` no `.env` (chave do [Google AI Studio](https://aistudi
 
 Sem Docker/Postgres a aplicação continua utilizável: os jobs ficam só em memória, e o que deixa de ser gravado é a linha de `processing_runs`.
 
+## Deploy (teste com usuário real)
+
+Uma imagem só (`Dockerfile` na raiz): o FastAPI serve a API e o build do React no mesmo endereço, com o Tesseract `por` instalado. `render.yaml` descreve o serviço no [Render](https://render.com), que dá HTTPS automático. Tudo é feito pelo navegador, inclusive no celular:
+
+1. Entre em render.com com a conta do GitHub e autorize o acesso ao repositório `veritas-ai`.
+2. **New → Blueprint**, escolha o repositório e a branch que tem o `render.yaml`.
+3. Cole a `GEMINI_API_KEY` quando o Render pedir. Use uma chave de projeto com **faturamento ativo** no Google AI Studio: no plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos, o que não serve para processo real (LGPD).
+4. Confirme o plano (`starter`, 512 MB) e aguarde o build. O link `https://<nome>.onrender.com` é o que o usuário abre no navegador.
+
+Cuidados:
+
+- **Uma instância só.** As sessões ficam em memória; reiniciar ou fazer novo deploy descarta as revisões abertas.
+- **Sem autenticação** (fora do escopo do TCC): quem tiver o link usa o app e consome a cota do Gemini. Para um teste, suspenda o serviço no painel do Render ao terminar.
+- Memória medida com 512 MB: PDF escaneado de 55 MB e 250 páginas atinge ~350 MB na triagem. Se o serviço reiniciar por falta de memória com PDFs maiores, suba para o plano `standard`.
+- Sem `DATABASE_URL`, a linha de `processing_runs` é omitida e o resto funciona. Para guardar os metadados, aponte para um Postgres (ex.: Neon) e rode `alembic upgrade head`.
+
+Para rodar a mesma imagem localmente: `docker build -t veritas-ai .` e `docker run --rm -p 8765:8765 -e GEMINI_API_KEY=... veritas-ai` (abra http://127.0.0.1:8765).
+
 ## API
 
 Prefixo `/api/v1`.

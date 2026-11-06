@@ -92,7 +92,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 ## CI
 
-`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + testes (Vitest) + build do frontend. Depreciação conhecida do `TestClient` com `httpx` vira erro no pytest (`filterwarnings`). Não há deploy (HTTPS/deploy é TODO). Dependabot semanal para pip e npm.
+`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + testes (Vitest) + build do frontend. Depreciação conhecida do `TestClient` com `httpx` vira erro no pytest (`filterwarnings`). O job de imagem constrói o `Dockerfile` da raiz; o deploy de teste é pelo `render.yaml` (Render), sem deploy automático pelo CI. Dependabot semanal para pip e npm.
 
 ## Antes de concluir uma tarefa
 

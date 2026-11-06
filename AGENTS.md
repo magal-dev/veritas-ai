@@ -178,7 +178,7 @@ TODO (trabalho futuro):
 - [ ] OCR local para outros layouts de cartão e para holerite escaneado (hoje vão como página)
 - [x] Layout de importação do PJe-Calc (CSVs da 2.16: jornada e histórico salarial; férias e faltas não são extraídas)
 - [ ] Avaliação com processos reais anonimizados (script pronto; falta o conjunto de PDFs + gabaritos)
-- [ ] HTTPS / deploy
+- [ ] HTTPS / deploy (imagem Docker + `render.yaml` prontos para teste com um usuário; falta deploy definitivo)
 - [ ] Autenticação e histórico (fora de escopo; só como trabalho futuro acadêmico)
 
 ## 9. Como rodar

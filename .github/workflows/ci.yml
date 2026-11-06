@@ -114,6 +114,20 @@ jobs:
           alembic downgrade base
           alembic upgrade head
 
+  docker:
+    name: Imagem Docker (deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build e health check
+        run: |
+          docker build -t veritas-ai .
+          docker run -d --name vt -p 8765:8765 veritas-ai
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8765/ | grep -q '<div id="root">'
+          docker exec vt tesseract --list-langs | grep -qx por
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

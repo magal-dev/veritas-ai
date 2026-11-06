@@ -1,0 +1,24 @@
+# Blueprint do Render (render.com → New → Blueprint). Um serviço web com HTTPS automático.
+# Uma instância só: as sessões ficam em memória (JOB_TTL_SECONDS) e não são compartilhadas.
+services:
+  - type: web
+    name: veritas-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: virginia
+    numInstances: 1
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Pedida no painel na criação; nunca commitar. Use conta com faturamento ativo (LGPD).
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: JOB_TTL_SECONDS
+        value: "900"
+      - key: MAX_UPLOAD_MB
+        value: "80"
+      - key: TIME_CARD_OCR
+        value: "true"
