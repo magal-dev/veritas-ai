@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     time_card_ocr: bool = True
     tesseract_cmd: str = "tesseract"
     frontend_origin: str = "http://127.0.0.1:4174"
+    # Deploy: pasta com o build do frontend (frontend/dist). Vazia = API pura (dev local).
+    static_dir: str = ""
 
 
 settings = Settings()
