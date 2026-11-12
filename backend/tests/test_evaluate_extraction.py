@@ -239,7 +239,8 @@ def test_main_passes_the_production_time_card_reader(tmp_path: Path, monkeypatch
     printed = capsys.readouterr().out
     assert received["time_card_reader"] is not None
     assert "unrecognized 1" in printed
-    assert "páginas enviadas inteiras ao Gemini: 2" in printed
+    # PDF curto vai inteiro, como em produção: 3 páginas candidatas, nenhuma reconhecida.
+    assert "páginas enviadas inteiras ao Gemini: 3" in printed
 
     assert main([str(pdf), str(gabarito), "--no-ocr"]) == 0
     assert received["time_card_reader"] is None

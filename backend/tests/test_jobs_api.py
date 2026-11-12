@@ -3,6 +3,7 @@ import importlib
 import logging
 import zipfile
 from io import BytesIO
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pymupdf as fitz
@@ -344,7 +345,7 @@ def test_run_metadata_uses_run_id():
 
 
 def test_pipeline_error_returns_stable_code_without_the_exception_text(monkeypatch, caplog):
-    def boom(self, path):
+    def boom(self, path, **_kwargs):
         raise RuntimeError("cpf 123 secreto")
 
     monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
@@ -367,7 +368,7 @@ def test_pipeline_error_returns_stable_code_without_the_exception_text(monkeypat
 
 
 def test_invalid_pdf_value_stays_a_client_error(monkeypatch):
-    def boom(self, path):
+    def boom(self, path, **_kwargs):
         raise ValueError("INVALID_PDF")
 
     monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
@@ -377,7 +378,7 @@ def test_invalid_pdf_value_stays_a_client_error(monkeypatch):
 
 
 def test_other_value_error_is_pipeline_error(monkeypatch):
-    def boom(self, path):
+    def boom(self, path, **_kwargs):
         raise ValueError("schema quebrado")
 
     monkeypatch.setattr(LocalDocumentExtractor, "extract", boom)
@@ -388,7 +389,7 @@ def test_other_value_error_is_pipeline_error(monkeypatch):
 
 
 def test_failed_classification_keeps_candidates_unclassified(monkeypatch):
-    def fake_extract(self, path):
+    def fake_extract(self, path, **_kwargs):
         return ExtractionSignals(pdf_page_count=1, candidate_pages=[1])
 
     def fake_classify(pdf_path, signals):
@@ -435,3 +436,86 @@ def test_session_limit_after_processing_returns_429(monkeypatch):
 def test_lifespan_cancels_the_session_sweep():
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+
+
+def _jpeg_bytes(size=(600, 800)) -> bytes:
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("L", size, 230).save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+def test_photos_of_selected_pages_are_all_read():
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/jobs",
+        files=[
+            ("file", ("holerite_1.jpg", BytesIO(_jpeg_bytes()), "image/jpeg")),
+            ("file", ("holerite_2.jpg", BytesIO(_jpeg_bytes()), "image/jpeg")),
+            ("file", ("cartao.pdf", BytesIO(_pdf_bytes(1)), "application/pdf")),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["pdf_page_count"] == 3
+    job_id = response.json()["job_id"]
+
+    # Sem GEMINI_API_KEY o stub não classifica, mas as três páginas chegaram à camada 3,
+    # mesmo sem palavra-chave nem aspecto de tabela.
+    extraction = client.get(f"/api/v1/jobs/{job_id}/preview").json()["extraction"]
+    assert extraction["candidate_page_count"] == 3
+    assert extraction["unclassified_candidate_pages"] == [1, 2, 3]
+
+
+def test_upload_tempfiles_are_removed(monkeypatch):
+    removed: list[str] = []
+    original = JobService._unlink
+
+    def recording(path):
+        if path is not None:
+            removed.append(str(path))
+        original(path)
+
+    monkeypatch.setattr(JobService, "_unlink", staticmethod(recording))
+    response = TestClient(app).post(
+        "/api/v1/jobs",
+        files=[
+            ("file", ("a.jpg", BytesIO(_jpeg_bytes()), "image/jpeg")),
+            ("file", ("b.png", BytesIO(_jpeg_bytes()), "image/png")),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    # Duas fotos + o PDF montado com elas.
+    assert len(removed) == 3
+    assert not any(Path(path).exists() for path in removed)
+
+
+def test_unreadable_photo_is_a_client_error():
+    response = TestClient(app).post(
+        "/api/v1/jobs",
+        files={"file": ("foto.jpg", BytesIO(b"nao e imagem"), "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["error_code"] == "INVALID_FILE_TYPE"
+
+
+def test_too_many_files_is_rejected(monkeypatch):
+    monkeypatch.setattr("services.job_service.MAX_UPLOAD_FILES", 2)
+    response = TestClient(app).post(
+        "/api/v1/jobs",
+        files=[("file", (f"{index}.jpg", BytesIO(_jpeg_bytes()), "image/jpeg")) for index in range(3)],
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["error_code"] == "TOO_MANY_FILES"
+
+
+def test_size_limit_counts_every_file(monkeypatch):
+    photo = _jpeg_bytes((1200, 1600))
+    monkeypatch.setattr(settings, "max_upload_mb", 1)
+    count = (1024 * 1024) // len(photo) + 1
+    response = TestClient(app).post(
+        "/api/v1/jobs",
+        files=[("file", (f"{index}.jpg", BytesIO(photo), "image/jpeg")) for index in range(count)],
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["error_code"] == "FILE_TOO_LARGE"

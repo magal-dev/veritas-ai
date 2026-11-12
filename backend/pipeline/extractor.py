@@ -9,6 +9,12 @@ raster) é pontuada sem API por um pixmap cinza de 72 DPI (faixas de linhas com 
 traços horizontais). Essas páginas só ocupam as vagas que sobram depois das candidatas
 de texto. Limitação conhecida: uma petição escaneada também tem muitas faixas de texto e
 pode ocupar uma vaga restante; o Gemini a classifica como IRRELEVANTE.
+Páginas de cálculo (planilha de liquidação, apuração de horas extras do perito, relatório do
+PJe-Calc) também têm data, horário e valor por linha: com um marcador de cálculo no texto, a
+página sai da triagem do processo inteiro.
+Documento curto (até `MAX_CANDIDATE_PAGES` páginas, ex.: só as folhas do cartão e do
+holerite, ou fotos): o perito já escolheu as páginas, então todas vão para a camada 3 sem
+filtro (`keep_all_up_to`).
 Não persiste texto nem imagem: o pixmap é descartado ao fim de cada página. O tempfile do PDF é responsabilidade do service (unlink no finally).
 """
 
@@ -41,6 +47,24 @@ WEAK_KEYWORDS = [
     "fgts",
 ]
 LAYER1_KEYWORDS = STRONG_KEYWORDS + WEAK_KEYWORDS
+# Marcadores de cálculo: aparecem em planilhas de liquidação, laudos e relatórios do PJe-Calc
+# que repetem datas, horários e verbas do cartão e do holerite, mas não são o documento
+# original. Nenhum deles aparece num cartão de ponto ou num recibo de pagamento.
+CALCULATION_MARKERS = [
+    "planilha de calculo",
+    "memoria de calculo",
+    "demonstrativo de calculo",
+    "calculo de liquidacao",
+    "liquidacao de sentenca",
+    "atualizacao monetaria",
+    "correcao monetaria",
+    "indice de correcao",
+    "juros de mora",
+    "juros moratorios",
+    "laudo pericial",
+    "pje-calc",
+    "pjecalc",
+]
 
 STRONG_KEYWORD_SCORE = 300.0
 WEAK_KEYWORD_SCORE = 50.0
@@ -97,6 +121,7 @@ class PageSignal:
     text_density: float = 0.0
     table_hint: bool = False
     toc_match: bool = False
+    calculation: bool = False
     score: float = 0.0
     # Trilha visual: só métricas agregadas, nunca pixels.
     visual: bool = False
@@ -114,12 +139,14 @@ class ExtractionSignals:
     candidate_pages: list[int] = field(default_factory=list)
     overflow_candidate_pages: list[int] = field(default_factory=list)
     page_signals: list[PageSignal] = field(default_factory=list)
+    # Documento curto: todas as páginas viraram candidatas, sem triagem.
+    all_pages: bool = False
 
 
 class DocumentExtractor:
     """Contrato da extração local. Implementação real: PyMuPDF + heurísticas."""
 
-    def extract(self, pdf_path: Path) -> ExtractionSignals:
+    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
         raise NotImplementedError
 
 
@@ -136,6 +163,11 @@ _STRONG_SET = frozenset(STRONG_KEYWORDS)
 def _find_keyword_hits(text: str) -> list[str]:
     normalized = _normalize_text(text)
     return [keyword for keyword, needle in _NORMALIZED_KEYWORDS if needle in normalized]
+
+
+def _has_calculation_marker(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(marker in normalized for marker in CALCULATION_MARKERS)
 
 
 def _count_pattern_hits(text: str) -> int:
@@ -170,6 +202,8 @@ def _score_page(signal: PageSignal) -> float:
 
 
 def _has_primary_signal(signal: PageSignal) -> bool:
+    if signal.calculation:
+        return False
     # Petições citam INSS/FGTS, um horário ou o valor da causa: palavra fraca sozinha não
     # basta, a página precisa de densidade tabular (MIN_PATTERN_HITS) como cartão/holerite.
     has_strong = any(keyword in _STRONG_SET for keyword in signal.keyword_hits)
@@ -194,7 +228,7 @@ def _image_stats(page: fitz.Page) -> tuple[int, float]:
 
 
 def _is_visual_page(text: str, image_count: int, coverage: float, signal: PageSignal) -> bool:
-    if _has_primary_signal(signal):
+    if signal.calculation or _has_primary_signal(signal):
         return False
     char_count = sum(1 for char in text if not char.isspace())
     if char_count <= MAX_VISUAL_TEXT_CHARS and image_count >= 1:
@@ -256,7 +290,8 @@ def _visual_score(signal: PageSignal) -> float:
 class LocalDocumentExtractor(DocumentExtractor):
     """Camadas 1–2: triagem local sem chamadas à API."""
 
-    def extract(self, pdf_path: Path) -> ExtractionSignals:
+    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
+        """Triagem do PDF. Com até `keep_all_up_to` páginas, todas viram candidatas."""
         started = time.perf_counter()
         try:
             document = fitz.open(pdf_path)
@@ -279,6 +314,7 @@ class LocalDocumentExtractor(DocumentExtractor):
                     pattern_hits=_count_pattern_hits(text),
                     text_density=len(text) / area,
                     toc_match=index in toc_pages,
+                    calculation=_has_calculation_marker(text),
                 )
                 signal.score = _score_page(signal)
                 image_count, coverage = _image_stats(page)
@@ -288,6 +324,9 @@ class LocalDocumentExtractor(DocumentExtractor):
                 signals_by_page[index] = signal
         finally:
             document.close()
+
+        if 0 < page_count <= keep_all_up_to:
+            return _all_pages_signals(page_count, toc_titles, signals_by_page, started)
 
         # Vizinhos ±1 de páginas com keyword hit, se tiverem algum padrão tabular
         # (ex.: continuação de cartão de ponto sem cabeçalho).
@@ -300,6 +339,7 @@ class LocalDocumentExtractor(DocumentExtractor):
                 if (
                     neighbor_signal is None
                     or neighbor_signal.visual
+                    or neighbor_signal.calculation
                     or _has_primary_signal(neighbor_signal)
                 ):
                     continue
@@ -332,13 +372,15 @@ class LocalDocumentExtractor(DocumentExtractor):
 
         logger.info(
             "extractor.complete pdf_page_count=%s candidate_page_count=%s overflow_count=%s "
-            "table_checked=%s visual_page_count=%s visual_candidate_count=%s duration_ms=%s",
+            "table_checked=%s visual_page_count=%s visual_candidate_count=%s "
+            "calculation_page_count=%s duration_ms=%s",
             page_count,
             len(candidate_pages),
             len(overflow_pages),
             table_checked,
             sum(1 for signal in signals_by_page.values() if signal.visual),
             min(len(visual_ranked), free_slots),
+            sum(1 for signal in signals_by_page.values() if signal.calculation),
             int((time.perf_counter() - started) * 1000),
         )
 
@@ -370,6 +412,29 @@ class LocalDocumentExtractor(DocumentExtractor):
                     page.close()
                 signal.score = _score_page(signal)
         return len(primary)
+
+
+def _all_pages_signals(
+    page_count: int,
+    toc_titles: list[str],
+    signals_by_page: dict[int, PageSignal],
+    started: float,
+) -> ExtractionSignals:
+    """Documento curto: o perito já separou as páginas; todas seguem para a camada 3."""
+    logger.info(
+        "extractor.all_pages pdf_page_count=%s visual_page_count=%s duration_ms=%s",
+        page_count,
+        sum(1 for signal in signals_by_page.values() if signal.visual),
+        int((time.perf_counter() - started) * 1000),
+    )
+    return ExtractionSignals(
+        pdf_page_count=page_count,
+        toc_titles=toc_titles,
+        candidate_pages=list(range(1, page_count + 1)),
+        overflow_candidate_pages=[],
+        page_signals=list(signals_by_page.values()),
+        all_pages=True,
+    )
 
 
 def _rank_visual(
@@ -406,7 +471,7 @@ def _rank_visual(
 class StubDocumentExtractor(DocumentExtractor):
     """Conta páginas; não extrai texto nem classifica candidatas."""
 
-    def extract(self, pdf_path: Path) -> ExtractionSignals:
+    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
         try:
             document = fitz.open(pdf_path)
         except Exception as exc:

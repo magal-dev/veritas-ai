@@ -36,6 +36,8 @@ Fluxo em 4 etapas (upload, processamento, revisão e download), todo em portugu�
 ### Limitações atuais
 
 - **Sem `GEMINI_API_KEY`:** a triagem local roda, mas as candidatas ficam como "não classificadas" e nenhum dado é extraído.
+- **Só as folhas do cartão e do holerite, ou fotos:** o envio aceita vários arquivos (PDFs e fotos JPG/PNG/WEBP), juntados num PDF temporário na ordem escolhida. Com até 25 páginas no total, todas são lidas, sem triagem: a perita já escolheu as folhas.
+- **Páginas de cálculo:** planilhas de cálculo, apuração de horas extras, liquidação e relatórios do PJe-Calc repetem datas e verbas, mas não são o documento original. No processo inteiro, a triagem as deixa de fora pelos marcadores de cálculo, e o prompt do Gemini as classifica como irrelevantes.
 - **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as aceita só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
 - **OCR local do cartão de ponto:** reconhece um layout (o medido em folhas reais). Outros layouts e holerites escaneados continuam indo ao Gemini como página. Folha do layout reconhecido cujas datas não se confirmam pelas próprias linhas (folha curta, data cortada na margem) não sai do servidor: os horários são lidos do mesmo jeito e as datas ficam para o perito confirmar na revisão ("Confirmar datas da p. N"); até lá, esses dias não entram na exportação. Sem o Tesseract instalado (ou com `TIME_CARD_OCR=false`), todo cartão escaneado vai como página. Dia de hora extra fora da jornada observada (±75 min) vai para revisão em vez de ser aceito.
 - Sem `GEMINI_API_KEY`, o OCR local não roda (a extração depende da camada 3).
@@ -112,7 +114,7 @@ veritas-ai/
 ├── backend/               # API e processamento (Python + FastAPI)
 │   ├── main.py            # Entrada da aplicação FastAPI
 │   ├── api/               # Rotas HTTP (jobs, health)
-│   ├── services/          # Orquestração: sessão, upload, descarte do PDF
+│   ├── services/          # Orquestração: sessão, upload (PDFs/fotos → PDF), descarte
 │   ├── pipeline/          # Estágios do processamento
 │   │   ├── extractor.py   # Camadas 1–2: PyMuPDF + heurísticas (pdfplumber na shortlist)
 │   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração em paralelo
@@ -216,7 +218,7 @@ Prefixo `/api/v1`.
 
 | Método | Caminho | Descrição |
 |---|---|---|
-| POST | `/api/v1/jobs` | Envia o PDF e processa (o arquivo existe só em tempfile durante a requisição) |
+| POST | `/api/v1/jobs` | Envia o PDF do processo, ou só as folhas do cartão e do holerite (PDFs e/ou fotos JPG/PNG/WEBP, campo `file` repetido), e processa. Até 25 páginas, todas são lidas; os arquivos existem só em tempfile durante a requisição |
 | GET | `/api/v1/jobs/{id}` | Status e metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, mantido em memória |
 | PATCH | `/api/v1/jobs/{id}/extraction` | Salva correções da revisão e revalida (memória) |
