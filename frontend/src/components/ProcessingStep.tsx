@@ -24,8 +24,8 @@ export function ProcessingStep({ fileName }: ProcessingStepProps) {
       <CardHeader className="relative">
         <CardTitle>Processando na sessão</CardTitle>
         <CardDescription>
-          O PDF não permanece no servidor. A triagem local e a classificação Gemini
-          rodam nesta sessão — os dados ficam só em memória.
+          Os arquivos não permanecem no servidor. A leitura das folhas e a classificação
+          Gemini rodam nesta sessão — os dados ficam só em memória.
         </CardDescription>
       </CardHeader>
       <CardContent className="relative flex flex-col items-center gap-5 py-8" role="status" aria-live="polite">

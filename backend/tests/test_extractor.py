@@ -358,3 +358,60 @@ def test_extractor_skips_table_detection_on_image_pages(tmp_path: Path, monkeypa
 
     assert opened_pages == [1]
     assert signals.candidate_pages == [1, 2]
+
+
+def _draw_overtime_calculation(page: fitz.Page) -> None:
+    """Planilha de apuração do perito: copia datas e horários do cartão, mas é cálculo."""
+    page.insert_text((40, 50), "PLANILHA DE CALCULO - APURACAO DE HORAS EXTRAS", fontsize=12)
+    page.insert_text((40, 66), "Base: cartao de ponto. Atualizacao monetaria e juros de mora.", fontsize=9)
+    y = 100
+    for day in range(1, 21):
+        y += 18
+        values = [f"{day:02d}/03/2024", "08:00", "18:00", "02:00", "45,32"]
+        for x, value in zip([40, 120, 200, 280, 360], values):
+            page.insert_text((x, y), value, fontsize=8.5)
+
+
+def test_extractor_drops_calculation_page_from_full_process_triage(tmp_path: Path):
+    document = fitz.open()
+    _add_text(document, "Pagina 1 - peticao inicial")
+    _draw_time_card(document.new_page())
+    _draw_overtime_calculation(document.new_page())
+    _add_text(document, "Relatorio PJe-Calc 01/03/2024 08:00 12:00 13:00 17:00 1.234,56")
+
+    signals = LocalDocumentExtractor().extract(_save(document, tmp_path / "processo.pdf"))
+
+    assert signals.candidate_pages == [2]
+    assert signals.page_signals[2].calculation
+    assert signals.page_signals[3].calculation
+    assert not signals.all_pages
+
+
+def test_extractor_short_document_sends_every_page(tmp_path: Path):
+    document = fitz.open()
+    _add_text(document, "Recibo de pagamento de salario - competencia 03/2024")
+    _add_scanned(document, _draw_stamp)
+    _add_text(document, "Pagina sem palavra-chave")
+
+    path = _save(document, tmp_path / "folhas.pdf")
+    signals = LocalDocumentExtractor().extract(path, keep_all_up_to=MAX_CANDIDATE_PAGES)
+
+    assert signals.all_pages
+    assert signals.candidate_pages == [1, 2, 3]
+    assert signals.overflow_candidate_pages == []
+    # A página escaneada continua marcada como visual (rota do OCR local do cartão).
+    assert signals.page_signals[1].visual
+
+    # Sem o limite, a mesma folha passa pela triagem e não tem candidata.
+    assert LocalDocumentExtractor().extract(path).candidate_pages == []
+
+
+def test_extractor_long_document_keeps_triage(tmp_path: Path):
+    texts = ["Pagina sem relevancia"] * (MAX_CANDIDATE_PAGES + 1)
+    pdf_path = tmp_path / "longo.pdf"
+    pdf_path.write_bytes(_pdf_with_pages(texts))
+
+    signals = LocalDocumentExtractor().extract(pdf_path, keep_all_up_to=MAX_CANDIDATE_PAGES)
+
+    assert not signals.all_pages
+    assert signals.candidate_pages == []

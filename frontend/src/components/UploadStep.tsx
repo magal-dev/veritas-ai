@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, FileUp } from 'lucide-react'
+import { ArrowRight, FileText, FileUp, X } from 'lucide-react'
 import { useId, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -6,48 +6,43 @@ import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { checkUploadFiles, mergeFiles } from '@/lib/upload'
 import { MAX_UPLOAD_MB } from '@/lib/types'
 
 type UploadStepProps = {
   busy: boolean
   error: string | null
-  onSubmit: (file: File) => void
+  onSubmit: (files: File[]) => void
 }
 
 export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
   const inputId = useId()
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [localError, setLocalError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
 
-  function validate(next: File | null) {
-    setLocalError(null)
-    if (!next) {
-      setFile(null)
-      return
-    }
-    const isPdf =
-      next.type === 'application/pdf' || next.name.toLowerCase().endsWith('.pdf')
-    if (!isPdf) {
-      setFile(null)
-      setLocalError('Envie um arquivo PDF do processo.')
-      return
-    }
-    if (next.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      setFile(null)
-      setLocalError(`O PDF não pode passar de ${MAX_UPLOAD_MB} MB nesta fundação.`)
-      return
-    }
-    setFile(next)
+  function add(incoming: FileList | null) {
+    if (!incoming || incoming.length === 0) return
+    const next = mergeFiles(files, Array.from(incoming))
+    const problem = checkUploadFiles(next)
+    setLocalError(problem)
+    if (!problem) setFiles(next)
   }
+
+  function remove(index: number) {
+    setLocalError(null)
+    setFiles((current) => current.filter((_, position) => position !== index))
+  }
+
+  const hasFiles = files.length > 0
 
   return (
     <Card>
       <CardHeader className="stagger">
-        <CardTitle>Enviar o PDF do processo</CardTitle>
+        <CardTitle>Enviar cartão de ponto e holerite</CardTitle>
         <CardDescription>
-          O PDF é triado localmente e as páginas candidatas são enviadas ao Gemini.
-          Nada do conteúdo processual é gravado em banco.
+          Envie só as folhas do cartão de ponto e do holerite (PDF ou fotos) ou o processo
+          inteiro. Nada do conteúdo processual é gravado em banco.
         </CardDescription>
       </CardHeader>
       <CardContent className="stagger space-y-4">
@@ -65,7 +60,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
           onDrop={(event) => {
             event.preventDefault()
             setDragging(false)
-            validate(event.dataTransfer.files[0] ?? null)
+            add(event.dataTransfer.files)
           }}
         >
           {['left-0 top-0 border-l border-t', 'right-0 top-0 border-r border-t', 'bottom-0 left-0 border-b border-l', 'bottom-0 right-0 border-b border-r'].map((pos) => (
@@ -79,43 +74,71 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
               )}
             />
           ))}
-          <span className={cn('text-accent', !file && 'animate-float')}>
-            {file ? (
+          <span className={cn('text-accent', !hasFiles && 'animate-float')}>
+            {hasFiles ? (
               <FileText key="file" className="h-7 w-7 animate-pop" strokeWidth={1.25} aria-hidden />
             ) : (
               <FileUp className="h-7 w-7" strokeWidth={1.25} aria-hidden />
             )}
           </span>
           <span className="max-w-full break-words font-display text-xl leading-tight sm:text-2xl">
-            {file ? file.name : 'Escolha o PDF ou solte o arquivo aqui'}
+            {hasFiles
+              ? `${files.length} arquivo(s) selecionado(s) · adicionar mais`
+              : 'Escolha os arquivos ou solte-os aqui'}
           </span>
           <span className="eyebrow text-ink-muted">
-            PDF nativo ou digitalizado · até {MAX_UPLOAD_MB} MB
+            PDF ou fotos (JPG, PNG) · vários de uma vez · até {MAX_UPLOAD_MB} MB no total
           </span>
           <input
             id={inputId}
             type="file"
-            accept="application/pdf,.pdf"
+            multiple
+            accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             className="sr-only"
             disabled={busy}
-            onChange={(event) => validate(event.target.files?.[0] ?? null)}
+            onChange={(event) => {
+              add(event.target.files)
+              event.target.value = ''
+            }}
           />
         </label>
+
+        {hasFiles && (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Arquivos selecionados">
+            {files.map((item, index) => (
+              <li
+                key={`${item.name}-${item.size}-${item.lastModified}`}
+                className="flex max-w-full items-center gap-1 rounded-full border border-rule bg-paper-2 py-0.5 pl-2.5 pr-1 text-xs text-ink"
+              >
+                <span className="truncate">{item.name}</span>
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-ink-muted hover:text-accent"
+                  aria-label={`Remover ${item.name}`}
+                  disabled={busy}
+                  onClick={() => remove(index)}
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {(localError || error) && <Alert>{localError || error}</Alert>}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
-            A triagem local identifica cartões de ponto e holerites. O Gemini classifica
-            até 25 páginas candidatas por processo, em no máximo 5 chamadas. Páginas
-            escaneadas entram na triagem pelo aspecto de tabela e são lidas pelo Gemini.
+            Até 25 páginas no total, todas são lidas, na ordem do envio. Acima disso, o envio é
+            tratado como processo inteiro: a triagem local separa as folhas de cartão de ponto e
+            holerite e deixa de fora petições e planilhas de cálculo.
           </p>
           <Button
             type="button"
             size="lg"
             className="group/btn w-full sm:w-auto"
-            disabled={!file || busy}
-            onClick={() => file && onSubmit(file)}
+            disabled={!hasFiles || busy}
+            onClick={() => hasFiles && onSubmit(files)}
           >
             {busy ? 'Enviando…' : 'Processar na sessão'}
             <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" aria-hidden />

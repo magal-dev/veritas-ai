@@ -26,7 +26,6 @@ import type { Conflict, ExtractionResult, ExtractionUpdateBody, PayslipEntry, Ti
 
 const INITIAL_ROWS = 10
 const ROWS_STEP = 20
-const INITIAL_RANGES = 12
 const INITIAL_CONFLICTS = 5
 
 const inputClass =
@@ -173,20 +172,15 @@ export function ReviewStep({
 
   const unconfirmedDatePages = pagesWithUnconfirmedDates(timeCards)
 
-  const hasQualityIssues =
-    unconfirmedDatePages.length > 0 ||
-    extraction.unclassified_candidate_pages.length > 0 ||
-    extraction.missing_fields.length > 0 ||
-    extraction.ambiguous_fields.length > 0 ||
-    openConflicts.length > 0
+  // Só o que exige ação antes do download. Campos ausentes ou a conferir ficam destacados na
+  // própria linha da tabela; páginas sem leitura só aparecem quando nada foi extraído.
+  const hasPendingActions = unconfirmedDatePages.length > 0 || openConflicts.length > 0
+  const nothingExtracted = timeCards.length === 0 && payslips.length === 0
 
   const [timeCardRows, setTimeCardRows] = useState(INITIAL_ROWS)
   const [payslipRows, setPayslipRows] = useState(INITIAL_ROWS)
-  const [showAllRanges, setShowAllRanges] = useState(false)
   const [showAllConflicts, setShowAllConflicts] = useState(false)
 
-  const unclassifiedRanges = toPageRanges(extraction.unclassified_candidate_pages)
-  const visibleRanges = showAllRanges ? unclassifiedRanges : unclassifiedRanges.slice(0, INITIAL_RANGES)
   const visibleConflicts = showAllConflicts ? openConflicts : openConflicts.slice(0, INITIAL_CONFLICTS)
 
   const canContinue =
@@ -249,13 +243,13 @@ export function ReviewStep({
         <CardHeader>
           <CardTitle>Revisão da sessão</CardTitle>
           <CardDescription>
-            Corrija horários e verbas na tabela, resolva conflitos entre páginas e salve antes de
-            gerar os arquivos do PJe-Calc.
+            Confira horários e verbas na tabela, corrija o que for preciso e salve antes de gerar
+            os arquivos do PJe-Calc. Linhas destacadas pedem conferência.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-8 text-sm sm:grid-cols-3">
           <div className="animate-rise border-t border-ink/70 pt-3 [animation-delay:150ms]">
-            <p className="eyebrow text-ink-muted">Páginas no PDF</p>
+            <p className="eyebrow text-ink-muted">Páginas enviadas</p>
             <p className="mt-1 font-display text-6xl leading-none text-accent">
               <CountUp value={extraction.pdf_page_count} />
             </p>
@@ -275,10 +269,19 @@ export function ReviewStep({
         </CardContent>
       </Card>
 
-      {hasQualityIssues && (
+      {nothingExtracted && (
+        <Alert>
+          Nenhuma folha foi lida como cartão de ponto ou holerite.
+          {extraction.unclassified_candidate_pages.length > 0
+            ? ` ${extraction.unclassified_candidate_pages.length} página(s) ficaram sem leitura (falha ou ausência da chave do Gemini). Envie de novo em instantes.`
+            : ' Confira se as fotos estão nítidas, inteiras e em pé, e envie de novo.'}
+        </Alert>
+      )}
+
+      {hasPendingActions && (
         <Card className="animate-rise [animation-delay:60ms]">
           <CardHeader>
-            <CardTitle className="text-base">Pendências da extração</CardTitle>
+            <CardTitle className="text-base">Conferir antes de baixar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-ink-muted">
             {unconfirmedDatePages.length > 0 && (
@@ -302,48 +305,6 @@ export function ReviewStep({
                   ))}
                 </div>
               </div>
-            )}
-            {extraction.unclassified_candidate_pages.length > 0 && (
-              <div className="space-y-2">
-                <p>
-                  <span className="font-display text-2xl leading-none text-accent">
-                    {extraction.unclassified_candidate_pages.length}
-                  </span>{' '}
-                  página(s) candidata(s) não classificada(s)
-                </p>
-                <ul className="flex flex-wrap gap-1.5" aria-label="Páginas não classificadas">
-                  {visibleRanges.map((range) => (
-                    <li
-                      key={range}
-                      className="rounded-full border border-rule bg-paper-2 px-2.5 py-0.5 font-mono text-xs tabular-nums text-ink"
-                    >
-                      {range.includes('–') ? `pp. ${range}` : `p. ${range}`}
-                    </li>
-                  ))}
-                  {unclassifiedRanges.length > INITIAL_RANGES && (
-                    <li>
-                      <button
-                        type="button"
-                        className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-accent underline-offset-2 hover:underline"
-                        onClick={() => setShowAllRanges((value) => !value)}
-                      >
-                        {showAllRanges
-                          ? 'ver menos'
-                          : `+${unclassifiedRanges.length - INITIAL_RANGES} intervalos`}
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-            {extraction.missing_fields.length > 0 && (
-              <p>Campos ausentes: {fieldList(extraction.missing_fields)}</p>
-            )}
-            {extraction.ambiguous_fields.length > 0 && (
-              <p>
-                Campos a conferir (leitura ambígua, fora do formato ou fora de ordem):{' '}
-                {fieldList(extraction.ambiguous_fields)}
-              </p>
             )}
             {openConflicts.length > 0 && (
               <div className="space-y-3">

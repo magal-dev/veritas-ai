@@ -62,6 +62,15 @@ formato abaixo, com um item em "pages" para cada página recebida.
 
 Regras:
 - Classifique como CARTAO_PONTO, HOLERITE ou IRRELEVANTE.
+- CARTAO_PONTO é só o registro original de jornada emitido pelo empregador ou pelo relógio
+  de ponto (cartão, folha ou espelho de ponto), com as marcações de cada dia.
+- HOLERITE é só o recibo de pagamento emitido pelo empregador (holerite, contracheque,
+  demonstrativo de pagamento de salário ou ficha financeira), com as verbas da competência.
+- Cálculos feitos sobre esses documentos são IRRELEVANTE, mesmo com datas, horários e
+  verbas por linha: planilha ou memória de cálculo, apuração ou demonstrativo de horas
+  extras, cálculo de liquidação, relatório do PJe-Calc, laudo pericial, tabela de petição
+  ou sentença. Sinais típicos: colunas de horas extras devidas, diferenças, valor devido x
+  pago, índices de correção, juros, atualização monetária, totais apurados.
 - Não invente valores. Se um campo não estiver visível, omita-o e liste o nome em missing_fields.
 - Horários no formato HH:mm. Datas YYYY-MM-DD. Competência YYYY-MM.
 - confidence entre 0 e 1 para a classificação da página.

@@ -8,7 +8,7 @@ Fonte de verdade para humanos e agentes. Leia este arquivo antes de alterar cód
 
 **Contexto acadêmico (TCC):** Extração Inteligente de Dados Processuais para PJe-Calc
 
-Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera os arquivos CSV que o PJe-Calc importa. Depois do download, descarta tudo.
+Aplicação web para contadores e peritos trabalhistas: recebe o PDF do processo, ou só as folhas do cartão de ponto e do holerite (PDFs e/ou fotos), localiza cartões de ponto e holerites, extrai campos estruturados, valida e gera os arquivos CSV que o PJe-Calc importa. Depois do download, descarta tudo.
 
 Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini** nas páginas candidatas, incluindo PDFs escaneados (triagem visual local; cartão de ponto escaneado lido por OCR local com só faixas anônimas ao Gemini; demais escaneadas com OCR pelo Gemini), com revisão editável antes da exportação para o PJe-Calc (CSVs de importação da versão 2.16). Deploy HTTPS permanece trabalho futuro.
 
@@ -36,7 +36,7 @@ Objetivo desta etapa do repositório: **triagem em 3 camadas e extração Gemini
 │   │   └── pjecalc_exporter.py ← CSVs de importação do PJe-Calc (.zip em memória)
 │   ├── models/               ← SQLAlchemy (ProcessingRun apenas)
 │   ├── repositories/         ← acesso ao PostgreSQL
-│   ├── services/             ← orquestra pipeline + sessão in-memory
+│   ├── services/             ← orquestra pipeline + sessão in-memory + montagem do envio (PDFs/fotos → PDF)
 │   ├── schemas/              ← Pydantic (JSON de extração e API)
 │   └── alembic/              ← migrations
 └── frontend/                 ← Vite + React + TypeScript + Tailwind + shadcn/ui
@@ -75,7 +75,8 @@ Duas abordagens complementares:
 Fluxo implementado:
 
 ```
-PDF bruto
+PDF do processo, ou folhas escolhidas (PDFs e/ou fotos → um PDF temporário)
+  → documento curto (até 25 páginas): todas as páginas seguem para a camada 3
   → extração local (PyMuPDF; pdfplumber só na shortlist)
   → filtro por palavras-chave
   → heurísticas de posição e densidade
@@ -113,7 +114,11 @@ Se uma funcionalidade exigir retenção de dado sensível, recuse e proponha alt
 
 ## 6. Anti-gargalo (triagem em 3 camadas)
 
-Para PDFs grandes, **nunca** envie todas as páginas ao Gemini. Funil:
+Para PDFs grandes, **nunca** envie todas as páginas ao Gemini. Funil abaixo.
+
+**Documento curto (folhas escolhidas):** a perita costuma separar à mão só as folhas do cartão de ponto e do holerite, muitas vezes como fotos. Com até 25 páginas no envio inteiro (`SELECTED_PAGES_LIMIT` = `MAX_CANDIDATE_PAGES`), todas vão para a camada 3 sem filtro: a triagem foi feita para achar folhas no meio de um processo e recusaria fotos com fundo, sombra ou poucas linhas. O custo continua no teto de 5 chamadas. Páginas visuais seguem pelo OCR local do cartão antes, como no processo inteiro.
+
+**Páginas de cálculo:** planilha ou memória de cálculo, apuração de horas extras, liquidação, laudo e relatório do PJe-Calc repetem datas, horários e verbas e eram extraídos como cartão ou holerite. Na triagem do processo inteiro, página com marcador de cálculo (`CALCULATION_MARKERS`: juros de mora, atualização monetária, liquidação de sentença, PJe-Calc...) não é candidata nem vizinha. O prompt do Gemini define cartão e holerite como os documentos originais do empregador e manda classificar cálculos como `IRRELEVANTE` (também cobre cálculo escaneado e o documento curto).
 
 **Camada 1 — leitura local (PyMuPDF):** texto de todas as páginas (`page.get_text`), sem custo de API. Filtrar por palavras-chave, em dois pesos:
 
@@ -161,7 +166,7 @@ Já existe:
 - Validador com regras de formato, coerência da jornada, duplicatas e conflitos entre páginas (sem regras jurídicas; ver `docs/SCHEMA_EXTRACAO.md`)
 - `pjecalc_exporter` com os CSVs de jornada do cartão de ponto e de histórico salarial (PJe-Calc 2.16)
 - `ProcessingRun` + Alembic
-- UI: tela inicial de apresentação, upload, processamento, revisão editável (tabelas + resolução de conflitos), download, erros
+- UI: tela inicial de apresentação, upload (PDF ou várias fotos), processamento, revisão editável (tabelas de cartão e holerite; só datas a confirmar e conflitos pedem ação), download, erros
 - Descarte de PDF/exportação/sessão
 - Testes do frontend (Vitest) para a lógica de revisão e o cliente da API
 - Script de avaliação ponta a ponta contra gabarito (`scripts/evaluate_extraction.py`)
@@ -175,6 +180,8 @@ TODO (trabalho futuro):
 - [x] Tratamento de PDF nativo vs. escaneado (triagem visual local; OCR pelo Gemini só nas candidatas)
 - [x] Revisão humana editável (tabelas + `PATCH /extraction`; exportação bloqueada com conflitos abertos)
 - [x] Cartão de ponto escaneado lido no servidor (OCR local + faixas anônimas ao Gemini; um layout)
+- [x] Envio só das folhas do cartão e do holerite (PDFs e/ou fotos; até 25 páginas, todas lidas)
+- [x] Páginas de cálculo (liquidação, apuração, PJe-Calc) fora da triagem e classificadas como `IRRELEVANTE`
 - [ ] OCR local para outros layouts de cartão e para holerite escaneado (hoje vão como página)
 - [x] Layout de importação do PJe-Calc (CSVs da 2.16: jornada e histórico salarial; férias e faltas não são extraídas)
 - [ ] Avaliação com processos reais anonimizados (script pronto; falta o conjunto de PDFs + gabaritos)
@@ -254,7 +261,7 @@ Rotas da API: prefixo `/api/v1`.
 
 | Método | Caminho | Sensível? |
 |---|---|---|
-| POST | `/api/v1/jobs` | PDF só em tempfile |
+| POST | `/api/v1/jobs` | PDF ou fotos (campo `file` repetido) só em tempfile |
 | GET | `/api/v1/jobs/{id}` | metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, memória |
 | PATCH | `/api/v1/jobs/{id}/extraction` | revisão editável, revalida em memória |

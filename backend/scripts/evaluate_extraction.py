@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import settings  # noqa: E402
 from pipeline.classifier import StubDocumentClassifier, build_classifier  # noqa: E402
-from pipeline.extractor import LocalDocumentExtractor  # noqa: E402
+from pipeline.extractor import MAX_CANDIDATE_PAGES, LocalDocumentExtractor  # noqa: E402
 from pipeline.time_card_ocr import (  # noqa: E402
     LocalTimeCards,
     TimeCardReader,
@@ -381,7 +381,8 @@ def run(pdf_path: Path, truth: GroundTruth, local_only: bool, use_ocr: bool = Tr
     timings: dict[str, float] = {}
 
     started = time.perf_counter()
-    signals = LocalDocumentExtractor().extract(pdf_path)
+    # Mesmo limite de produção: documento curto (só as folhas escolhidas) vai inteiro.
+    signals = LocalDocumentExtractor().extract(pdf_path, keep_all_up_to=MAX_CANDIDATE_PAGES)
     timings["triage"] = time.perf_counter() - started
 
     # Mesmo caminho de produção: cartão escaneado reconhecido passa pelo OCR local.
