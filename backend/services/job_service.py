@@ -17,7 +17,7 @@ from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
 from pipeline.classifier import DocumentClassifier, build_classifier
-from pipeline.extractor import LocalDocumentExtractor
+from pipeline.extractor import MAX_CANDIDATE_PAGES, LocalDocumentExtractor
 from pipeline.pjecalc_exporter import PjeCalcExporter
 from pipeline.time_card_ocr import build_time_card_reader
 from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
@@ -25,6 +25,13 @@ from repositories.processing_run_repository import ProcessingRunRepository
 from schemas.extraction import Conflict, ExtractionResult, PayslipEntry, TimeCardEntry
 from schemas.jobs import JobStatus
 from services.session_store import JobSession, SessionCapacityError, session_store
+from services.upload_bundle import UploadedFile, assemble_pdf, detect_kind
+
+# Arquivos por envio (fotos das folhas ou PDFs); o tamanho total segue MAX_UPLOAD_MB.
+MAX_UPLOAD_FILES = 60
+# Até este total de páginas o envio é tratado como páginas escolhidas pelo perito (só o
+# cartão e o holerite, ou fotos): todas vão para a camada 3, sem triagem.
+SELECTED_PAGES_LIMIT = MAX_CANDIDATE_PAGES
 
 
 class JobError(Exception):
@@ -73,18 +80,34 @@ class JobService:
         self._validator = validator
         self._exporter = exporter
 
-    async def create_from_upload(self, upload: UploadFile) -> JobSession:
-        self._assert_pdf(upload)
+    async def create_from_upload(self, uploads: UploadFile | list[UploadFile]) -> JobSession:
+        """Processa o processo inteiro (um PDF) ou só as páginas escolhidas (PDFs e/ou fotos)."""
+        files = [uploads] if isinstance(uploads, UploadFile) else list(uploads)
         job_id = uuid.uuid4()
         started = time.perf_counter()
-        tmp_path: Path | None = None
+        tmp_paths: list[Path] = []
 
         try:
+            kinds = self._assert_files(files)
             if not session_store.has_room():
                 raise JobError("SESSION_LIMIT", 429)
-            tmp_path = await self._write_temp_pdf(upload)
-            signals = await asyncio.to_thread(self._extractor.extract, tmp_path)
-            outcome = await asyncio.to_thread(self._classifier.classify, tmp_path, signals)
+            budget = [settings.max_upload_mb * 1024 * 1024]
+            saved: list[UploadedFile] = []
+            for upload, kind in zip(files, kinds):
+                path = await self._write_temp_file(upload, budget, ".pdf" if kind == "pdf" else ".img")
+                tmp_paths.append(path)
+                saved.append(UploadedFile(path=path, kind=kind))
+            if len(saved) == 1 and saved[0].kind == "pdf":
+                pdf_path = saved[0].path
+            else:
+                pdf_path = self._new_temp_path(".pdf")
+                tmp_paths.append(pdf_path)
+                await asyncio.to_thread(assemble_pdf, saved, pdf_path)
+
+            signals = await asyncio.to_thread(
+                self._extractor.extract, pdf_path, keep_all_up_to=SELECTED_PAGES_LIMIT
+            )
+            outcome = await asyncio.to_thread(self._classifier.classify, pdf_path, signals)
 
             extraction = ExtractionResult(
                 job_id=job_id,
@@ -104,20 +127,24 @@ class JobService:
         except JobError:
             raise
         except ValueError as exc:
-            if str(exc) == "INVALID_PDF":
+            if str(exc) in {"INVALID_PDF", "INVALID_IMAGE"}:
                 raise InvalidPdfError("INVALID_FILE_TYPE") from exc
             await self._fail_pipeline(job_id, started, exc)
         except Exception as exc:
             await self._fail_pipeline(job_id, started, exc)
         finally:
-            await upload.close()
-            self._unlink(tmp_path)
+            for upload in files:
+                await upload.close()
+            for path in tmp_paths:
+                self._unlink(path)
 
         pipeline_note = _build_pipeline_note(
             candidate_count=extraction.candidate_page_count,
             gemini_calls=extraction.gemini_call_count,
             classified_count=len(extraction.classifications),
             has_api_key=bool(settings.gemini_api_key.strip()),
+            all_pages=signals.all_pages,
+            extracted_count=len(extraction.time_cards) + len(extraction.payslips),
         )
 
         session = JobSession(
@@ -210,18 +237,29 @@ class JobService:
         logger.info("job.discarded job_id=%s removed=%s", job_id, removed)
         return removed
 
-    def _assert_pdf(self, upload: UploadFile) -> None:
-        filename = (upload.filename or "").lower()
-        content_type = (upload.content_type or "").lower()
-        if not filename.endswith(".pdf") and content_type not in {
-            "application/pdf",
-            "application/x-pdf",
-        }:
-            raise InvalidPdfError("INVALID_FILE_TYPE")
+    @staticmethod
+    def _assert_files(files: list[UploadFile]) -> list[str]:
+        if not files:
+            raise InvalidPdfError("EMPTY_FILE")
+        if len(files) > MAX_UPLOAD_FILES:
+            raise InvalidPdfError("TOO_MANY_FILES")
+        kinds: list[str] = []
+        for upload in files:
+            kind = detect_kind(upload.filename, upload.content_type)
+            if kind is None:
+                raise InvalidPdfError("INVALID_FILE_TYPE")
+            kinds.append(kind)
+        return kinds
 
-    async def _write_temp_pdf(self, upload: UploadFile) -> Path:
-        max_bytes = settings.max_upload_mb * 1024 * 1024
-        handle = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    @staticmethod
+    def _new_temp_path(suffix: str) -> Path:
+        handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        handle.close()
+        return Path(handle.name)
+
+    async def _write_temp_file(self, upload: UploadFile, budget: list[int], suffix: str) -> Path:
+        """Grava um arquivo do envio; `budget` é o saldo de bytes do envio inteiro."""
+        handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
         path = Path(handle.name)
         written = 0
         try:
@@ -230,12 +268,13 @@ class JobService:
                 if not chunk:
                     break
                 written += len(chunk)
-                if written > max_bytes:
+                if written > budget[0]:
                     raise InvalidPdfError("FILE_TOO_LARGE")
                 handle.write(chunk)
             handle.flush()
             if written == 0:
                 raise InvalidPdfError("EMPTY_FILE")
+            budget[0] -= written
             return path
         except Exception:
             handle.close()
@@ -284,6 +323,8 @@ def _build_pipeline_note(
     gemini_calls: int,
     classified_count: int,
     has_api_key: bool,
+    all_pages: bool = False,
+    extracted_count: int = 0,
 ) -> str:
     if not has_api_key:
         return (
@@ -300,6 +341,17 @@ def _build_pipeline_note(
         return (
             "Triagem local concluída. Nenhuma página candidata foi classificada; "
             f"elas seguem na revisão como não classificadas ({gemini_calls} chamada(s) à API)."
+        )
+    if all_pages and extracted_count == 0:
+        return (
+            f"Todas as {candidate_count} página(s) enviada(s) foram lidas, mas nenhuma foi "
+            "reconhecida como cartão de ponto ou holerite. Confira se as fotos estão nítidas, "
+            "inteiras e em pé."
+        )
+    if all_pages:
+        return (
+            f"Todas as {candidate_count} página(s) enviada(s) foram lidas, sem triagem "
+            f"({gemini_calls} chamada(s) à API)."
         )
     return (
         f"Triagem local + Gemini concluídas. {candidate_count} página(s) candidata(s), "

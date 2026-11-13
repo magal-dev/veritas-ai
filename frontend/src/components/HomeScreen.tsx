@@ -39,7 +39,7 @@ const FLAG_LABEL = {
 }
 
 const DISCARDED = [
-  { item: 'PDF do processo', when: 'apagado ao fim da triagem' },
+  { item: 'PDF ou fotos enviados', when: 'apagados ao fim da leitura' },
   { item: 'Arquivos do PJe-Calc', when: 'apagados do servidor após o download' },
   { item: 'Tabela revisada', when: 'some após 15 min sem uso, ou quando a revisão é encerrada' },
 ]
@@ -47,7 +47,7 @@ const DISCARDED = [
 const STORED = [
   'Data e hora do processamento',
   'Status e código de erro',
-  'Número de páginas do PDF',
+  'Número de páginas enviadas',
   'Número de páginas candidatas',
   'Número de chamadas ao Gemini',
 ]
@@ -161,15 +161,15 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
           <BrandBar />
 
           <h1 className="max-w-4xl animate-rise font-display text-[40px] leading-[1.04] tracking-[-0.02em] [animation-delay:250ms] sm:text-[60px] lg:text-[76px]">
-            Do PDF do processo para os arquivos de ponto e holerites do PJe-Calc.
+            Do cartão de ponto e do holerite para os arquivos do PJe-Calc.
           </h1>
 
           <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
             <div className="flex animate-rise flex-col gap-7 [animation-delay:450ms] lg:col-span-5 lg:pb-16">
               <p className="text-[16px] leading-relaxed text-offwhite/80 sm:text-[17px]">
-                Envie o processo inteiro. O Veritas AI localiza as folhas de cartão de ponto e
-                holerite, transcreve horários e verbas e mostra o resultado numa tabela para você
-                conferir antes de baixar.
+                Envie as fotos ou o PDF das folhas de cartão de ponto e holerite, ou o processo
+                inteiro. O Veritas AI transcreve horários e verbas e mostra o resultado numa
+                tabela para você conferir antes de baixar.
               </p>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button
@@ -178,7 +178,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
                   onClick={onStart}
                   className="group/btn bg-offwhite text-burgundy shadow-[0_10px_24px_-10px_rgba(0,0,0,0.6)] hover:bg-[#f6f3e7] focus-visible:ring-offwhite/60 focus-visible:ring-offset-burgundy"
                 >
-                  Enviar PDF
+                  Enviar arquivos
                   <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" aria-hidden />
                 </Button>
                 <a
@@ -293,10 +293,10 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
           <Reveal className="grid gap-10 lg:grid-cols-12 lg:items-end lg:gap-8">
             <div className="flex flex-col items-start gap-6 lg:col-span-6">
               <h2 id="comecar" className="font-display text-[34px] leading-[1.05] tracking-[-0.01em] sm:text-5xl">
-                Começar pelo PDF
+                Começar pelas folhas
               </h2>
               <Button type="button" size="lg" className="group/btn w-full sm:w-auto" onClick={onStart}>
-                Enviar PDF
+                Enviar arquivos
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" aria-hidden />
               </Button>
             </div>

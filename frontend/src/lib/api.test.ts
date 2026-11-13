@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { discardJob, downloadExport, getPreview, reviewCropUrl, updateExtraction } from '@/lib/api'
+import { createJob, discardJob, downloadExport, getPreview, reviewCropUrl, updateExtraction } from '@/lib/api'
 
 function mockFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -37,6 +37,16 @@ describe('erros da API', () => {
 })
 
 describe('rotas', () => {
+  it('envia cada arquivo no campo file, na ordem escolhida', async () => {
+    const fetchMock = mockFetch(json({ job_id: 'abc', status: 'completed', pdf_page_count: 2, message: '' }, 200))
+    const photos = [new File(['a'], 'a.jpg', { type: 'image/jpeg' }), new File(['b'], 'b.pdf', { type: 'application/pdf' })]
+    await createJob(photos)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/jobs')
+    const sent = (init.body as FormData).getAll('file') as File[]
+    expect(sent.map((item) => item.name)).toEqual(['a.jpg', 'b.pdf'])
+  })
+
   it('envia a revisão via PATCH com JSON', async () => {
     const fetchMock = mockFetch(json({ job_id: 'abc' }, 200))
     const body = { time_cards: [], payslips: [], conflicts: [] }

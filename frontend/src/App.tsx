@@ -126,19 +126,20 @@ export default function App() {
     setSession(emptySession)
   }
 
-  async function handleUpload(file: File) {
+  async function handleUpload(files: File[]) {
+    const fileName = files.length === 1 ? files[0].name : `${files.length} arquivos`
     setBusy(true)
     setError(null)
     setStep('processing')
     clearStoredJobId()
-    setSession({ jobId: '', fileName: file.name, extraction: null })
+    setSession({ jobId: '', fileName, extraction: null })
     try {
-      const created = await createJob(file)
+      const created = await createJob(files)
       storeJobId(created.job_id)
       const preview = await getPreview(created.job_id)
       setSession({
         jobId: created.job_id,
-        fileName: file.name,
+        fileName,
         extraction: preview.extraction,
       })
       setStep('review')
@@ -152,7 +153,7 @@ export default function App() {
 
   async function handleDownload() {
     if (!session.jobId) {
-      setError('Sessão inexistente. Envie o PDF novamente.')
+      setError('Sessão inexistente. Envie os arquivos novamente.')
       return
     }
     setBusy(true)

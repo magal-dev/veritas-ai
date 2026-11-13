@@ -93,3 +93,5 @@ export type ApiError = {
 }
 
 export const MAX_UPLOAD_MB = 80
+/** Igual a `MAX_UPLOAD_FILES` em backend/services/job_service.py. */
+export const MAX_UPLOAD_FILES = 60

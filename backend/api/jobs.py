@@ -17,10 +17,11 @@ from services.session_store import JobSession
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
 ERROR_MESSAGES = {
-    "INVALID_FILE_TYPE": "Envie um arquivo PDF.",
-    "FILE_TOO_LARGE": "O PDF excede o tamanho máximo permitido.",
+    "INVALID_FILE_TYPE": "Envie PDF ou fotos (JPG, PNG ou WEBP) legíveis.",
+    "FILE_TOO_LARGE": "Os arquivos excedem o tamanho máximo permitido.",
     "EMPTY_FILE": "O arquivo enviado está vazio.",
-    "PIPELINE_ERROR": "Falha ao processar o PDF. Tente outro arquivo.",
+    "TOO_MANY_FILES": "Arquivos demais em um envio. Junte as fotos em menos arquivos ou envie em partes.",
+    "PIPELINE_ERROR": "Falha ao processar os arquivos. Tente outro arquivo.",
     "SESSION_LIMIT": "Há sessões demais em memória. Encerre uma revisão ou aguarde o prazo sem uso.",
 }
 
@@ -49,7 +50,13 @@ def _http_from_job(exc: JobError) -> HTTPException:
 
 @router.post("", response_model=JobCreated)
 async def create_job(
-    file: UploadFile = File(..., description="PDF do processo — não é armazenado"),
+    file: list[UploadFile] = File(
+        ...,
+        description=(
+            "PDF do processo inteiro, ou só as páginas do cartão de ponto e do holerite "
+            "(PDFs e/ou fotos JPG/PNG; repita o campo para vários arquivos). Não é armazenado."
+        ),
+    ),
     service: JobService = Depends(get_job_service),
 ) -> JobCreated:
     try:
@@ -63,7 +70,7 @@ async def create_job(
         status=session.status,
         pdf_page_count=page_count,
         message=(
-            "PDF processado e descartado do servidor. "
+            "Arquivos processados e descartados do servidor. "
             "Revise os dados extraídos antes de baixar os arquivos do PJe-Calc."
         ),
     )

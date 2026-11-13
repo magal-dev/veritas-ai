@@ -24,9 +24,12 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 }
 
-export async function createJob(file: File): Promise<JobCreated> {
+/** Um PDF do processo, ou as folhas do cartão e do holerite (PDFs e/ou fotos), na ordem. */
+export async function createJob(files: File | File[]): Promise<JobCreated> {
   const body = new FormData()
-  body.append('file', file)
+  for (const file of Array.isArray(files) ? files : [files]) {
+    body.append('file', file)
+  }
   const response = await fetch('/api/v1/jobs', { method: 'POST', body })
   if (!response.ok) {
     throw await parseError(response)

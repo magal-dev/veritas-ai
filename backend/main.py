@@ -1,8 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from api.health import router as health_router
 from api.jobs import router as jobs_router
@@ -56,3 +58,21 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(jobs_router)
+
+
+def mount_frontend(target: FastAPI, static_dir: str) -> bool:
+    """No deploy, o mesmo processo serve o build do React: mesma origem, sem CORS.
+
+    Montado depois das rotas, então `/api/v1/*` e `/health` têm precedência.
+    """
+    if not static_dir:
+        return False
+    directory = Path(static_dir)
+    if not (directory / "index.html").is_file():
+        logger.warning("frontend.static_missing")
+        return False
+    target.mount("/", StaticFiles(directory=directory, html=True), name="frontend")
+    return True
+
+
+mount_frontend(app, settings.static_dir)

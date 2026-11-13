@@ -36,6 +36,8 @@ Fluxo em 4 etapas (upload, processamento, revisão e download), todo em portugu�
 ### Limitações atuais
 
 - **Sem `GEMINI_API_KEY`:** a triagem local roda, mas as candidatas ficam como "não classificadas" e nenhum dado é extraído.
+- **Só as folhas do cartão e do holerite, ou fotos:** o envio aceita vários arquivos (PDFs e fotos JPG/PNG/WEBP), juntados num PDF temporário na ordem escolhida. Com até 25 páginas no total, todas são lidas, sem triagem: a perita já escolheu as folhas.
+- **Páginas de cálculo:** planilhas de cálculo, apuração de horas extras, liquidação e relatórios do PJe-Calc repetem datas e verbas, mas não são o documento original. No processo inteiro, a triagem as deixa de fora pelos marcadores de cálculo, e o prompt do Gemini as classifica como irrelevantes.
 - **PDF escaneado** (sem camada de texto): a triagem pontua as páginas com imagem por sinais visuais (pixmap 72 DPI, faixas de linhas e traços) e as aceita só nas vagas que sobrarem depois das candidatas de texto (teto de 25). Páginas em branco ou com carimbo isolado são ignoradas.
 - **OCR local do cartão de ponto:** reconhece um layout (o medido em folhas reais). Outros layouts e holerites escaneados continuam indo ao Gemini como página. Folha do layout reconhecido cujas datas não se confirmam pelas próprias linhas (folha curta, data cortada na margem) não sai do servidor: os horários são lidos do mesmo jeito e as datas ficam para o perito confirmar na revisão ("Confirmar datas da p. N"); até lá, esses dias não entram na exportação. Sem o Tesseract instalado (ou com `TIME_CARD_OCR=false`), todo cartão escaneado vai como página. Dia de hora extra fora da jornada observada (±75 min) vai para revisão em vez de ser aceito.
 - Sem `GEMINI_API_KEY`, o OCR local não roda (a extração depende da camada 3).
@@ -112,7 +114,7 @@ veritas-ai/
 ├── backend/               # API e processamento (Python + FastAPI)
 │   ├── main.py            # Entrada da aplicação FastAPI
 │   ├── api/               # Rotas HTTP (jobs, health)
-│   ├── services/          # Orquestração: sessão, upload, descarte do PDF
+│   ├── services/          # Orquestração: sessão, upload (PDFs/fotos → PDF), descarte
 │   ├── pipeline/          # Estágios do processamento
 │   │   ├── extractor.py   # Camadas 1–2: PyMuPDF + heurísticas (pdfplumber na shortlist)
 │   │   ├── classifier.py  # Camada 3: Gemini — classificação e extração em paralelo
@@ -190,13 +192,33 @@ Preencha `GEMINI_API_KEY` no `.env` (chave do [Google AI Studio](https://aistudi
 
 Sem Docker/Postgres a aplicação continua utilizável: os jobs ficam só em memória, e o que deixa de ser gravado é a linha de `processing_runs`.
 
+## Deploy (teste com usuário real)
+
+Atalho: [Deploy no Render](https://render.com/deploy?repo=https://github.com/magal-dev/veritas-ai/tree/claude/deploy-test-client-dcrjym) abre o passo 2 já com o repositório e a branch.
+
+Uma imagem só (`Dockerfile` na raiz): o FastAPI serve a API e o build do React no mesmo endereço, com o Tesseract `por` instalado. `render.yaml` descreve o serviço no [Render](https://render.com), que dá HTTPS automático. Tudo é feito pelo navegador, inclusive no celular:
+
+1. Entre em render.com com a conta do GitHub e autorize o acesso ao repositório `veritas-ai`.
+2. **New → Blueprint**, escolha o repositório e a branch que tem o `render.yaml`.
+3. Cole a `GEMINI_API_KEY` quando o Render pedir. Use uma chave de projeto com **faturamento ativo** no Google AI Studio: no plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos, o que não serve para processo real (LGPD).
+4. Confirme o plano (`starter`, 512 MB) e aguarde o build. O link `https://<nome>.onrender.com` é o que o usuário abre no navegador.
+
+Cuidados:
+
+- **Uma instância só.** As sessões ficam em memória; reiniciar ou fazer novo deploy descarta as revisões abertas.
+- **Sem autenticação** (fora do escopo do TCC): quem tiver o link usa o app e consome a cota do Gemini. Para um teste, suspenda o serviço no painel do Render ao terminar.
+- Memória medida com 512 MB: PDF escaneado de 55 MB e 250 páginas atinge ~350 MB na triagem. Se o serviço reiniciar por falta de memória com PDFs maiores, suba para o plano `standard`.
+- Sem `DATABASE_URL`, a linha de `processing_runs` é omitida e o resto funciona. Para guardar os metadados, aponte para um Postgres (ex.: Neon) e rode `alembic upgrade head`.
+
+Para rodar a mesma imagem localmente: `docker build -t veritas-ai .` e `docker run --rm -p 8765:8765 -e GEMINI_API_KEY=... veritas-ai` (abra http://127.0.0.1:8765).
+
 ## API
 
 Prefixo `/api/v1`.
 
 | Método | Caminho | Descrição |
 |---|---|---|
-| POST | `/api/v1/jobs` | Envia o PDF e processa (o arquivo existe só em tempfile durante a requisição) |
+| POST | `/api/v1/jobs` | Envia o PDF do processo, ou só as folhas do cartão e do holerite (PDFs e/ou fotos JPG/PNG/WEBP, campo `file` repetido), e processa. Até 25 páginas, todas são lidas; os arquivos existem só em tempfile durante a requisição |
 | GET | `/api/v1/jobs/{id}` | Status e metadados da sessão |
 | GET | `/api/v1/jobs/{id}/preview` | JSON extraído, mantido em memória |
 | PATCH | `/api/v1/jobs/{id}/extraction` | Salva correções da revisão e revalida (memória) |

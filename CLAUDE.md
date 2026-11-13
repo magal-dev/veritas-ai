@@ -8,7 +8,7 @@ Guia operacional para o Claude Code. A fonte de verdade de produto, stack, priva
 
 ## Resumo rápido
 
-TCC: app web stateless que recebe PDF de processo trabalhista, faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera os CSVs de importação do PJe-Calc 2.16 (em um `.zip`). Páginas escaneadas são pontuadas localmente por sinais visuais e ocupam só as vagas restantes. Cartão de ponto escaneado de layout reconhecido é lido por OCR local (Tesseract) e só faixas anônimas de horários duvidosos vão ao Gemini; as demais escaneadas vão como página (o Gemini faz o OCR). Nada processual é persistido.
+TCC: app web stateless que recebe o PDF do processo trabalhista, ou só as folhas do cartão de ponto e do holerite (PDFs e/ou fotos), faz triagem em 3 camadas (PyMuPDF + regex → heurísticas, pdfplumber só na shortlist → Gemini em paralelo só nas candidatas), valida o JSON extraído e gera os CSVs de importação do PJe-Calc 2.16 (em um `.zip`). Páginas escaneadas são pontuadas localmente por sinais visuais e ocupam só as vagas restantes. Cartão de ponto escaneado de layout reconhecido é lido por OCR local (Tesseract) e só faixas anônimas de horários duvidosos vão ao Gemini; as demais escaneadas vão como página (o Gemini faz o OCR). Nada processual é persistido.
 
 - Backend: `backend/` (FastAPI, Python ≥ 3.11). Imports absolutos a partir de `backend/` (`from core.config import settings`), pois `pythonpath = ["."]`.
 - Frontend: `frontend/` (Vite + React 19 + TypeScript + Tailwind 4 + shadcn/ui).
@@ -49,23 +49,24 @@ npm test                                 # vitest (lógica de revisão e cliente
 
 `api/jobs.py` → `services/job_service.py::JobService.create_from_upload`:
 
-1. `_assert_pdf` e `_write_temp_pdf` (tempfile, limite `MAX_UPLOAD_MB`).
-2. `pipeline/extractor.py::LocalDocumentExtractor.extract` → `ExtractionSignals` (camadas 1–2).
+1. `_assert_files` e `_write_temp_file` (um tempfile por arquivo; campo `file` repetido, até `MAX_UPLOAD_FILES`; `MAX_UPLOAD_MB` vale para o envio inteiro). Mais de um arquivo, ou foto, é juntado num PDF temporário por `services/upload_bundle.py::assemble_pdf` (foto = uma página, EXIF aplicado).
+2. `pipeline/extractor.py::LocalDocumentExtractor.extract(..., keep_all_up_to=SELECTED_PAGES_LIMIT)` → `ExtractionSignals` (camadas 1–2). Até 25 páginas no total (folhas escolhidas pelo perito), todas viram candidatas sem triagem (`all_pages`); acima, triagem normal, com páginas de cálculo (marcadores em `CALCULATION_MARKERS`) fora.
 3. `pipeline/classifier.py::build_classifier(...).classify` em `asyncio.to_thread` (camada 3; `StubDocumentClassifier` sem API key). Páginas visuais candidatas passam antes por `pipeline/time_card_ocr.py::TimeCardReader` (se `TIME_CARD_OCR` e Tesseract disponíveis): reconhecidas viram registros + faixas ao Gemini; as outras vão como página.
 4. Monta `ExtractionResult` → `pipeline/validator.py`.
-5. `finally`: fecha o upload e apaga o PDF.
+5. `finally`: fecha os uploads e apaga todos os tempfiles (arquivos enviados e PDF montado).
 6. Sessão vai para `services/session_store.py` (in-memory, TTL `JOB_TTL_SECONDS`), com os recortes de célula da revisão em `review_crops`; `ProcessingRun` recebe só metadados (falha de banco é tolerada).
 
 Os CSVs do PJe-Calc (`pipeline/pjecalc_exporter.py`) são gerados em memória sob demanda em `GET /jobs/{id}/export`, como `.zip`.
 
-Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `EMPTY_FILE`, `PIPELINE_ERROR`, `EXTRACTION_MISSING`, `SESSION_LIMIT`). `PIPELINE_ERROR` sai como HTTP 500 com esse `error_code`. Se o Gemini não classifica nenhuma página, o job conclui e as candidatas ficam em `unclassified_candidate_pages`. O frontend depende dos códigos, então não renomeie sem atualizar `frontend/src/lib/api.ts` e os componentes.
+Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `EMPTY_FILE`, `TOO_MANY_FILES`, `PIPELINE_ERROR`, `EXTRACTION_MISSING`, `SESSION_LIMIT`). `PIPELINE_ERROR` sai como HTTP 500 com esse `error_code`. Se o Gemini não classifica nenhuma página, o job conclui e as candidatas ficam em `unclassified_candidate_pages`. O frontend depende dos códigos, então não renomeie sem atualizar `frontend/src/lib/api.ts` e os componentes.
 
 ## Onde mexer
 
 | Mudança | Arquivos |
 |---|---|
 | Novo campo extraído | `docs/SCHEMA_EXTRACAO.md`, `schemas/extraction.py`, prompt em `pipeline/classifier.py`, `pipeline/validator.py`, `pipeline/pjecalc_exporter.py` + `docs/PJE_CALC_LAYOUT.md` (se o PJe-Calc importar o campo), `frontend/src/lib/types.ts`, testes |
-| Palavras-chave, TOC, densidade | `pipeline/extractor.py`, `tests/test_extractor.py` |
+| Palavras-chave, marcadores de cálculo, TOC, densidade, limite do documento curto | `pipeline/extractor.py`, `tests/test_extractor.py` |
+| Tipos aceitos no envio, fotos | `services/upload_bundle.py`, `frontend/src/lib/upload.ts`, `tests/test_upload_bundle.py` |
 | Prompt, parsing ou limite de chamadas do Gemini | `pipeline/classifier.py`, `tests/test_classifier.py` |
 | OCR local do cartão escaneado (layout, trava, faixas) | `pipeline/time_card_ocr.py`, `tests/test_time_card_ocr.py`; medir com `scripts/evaluate_cell_fallback.py` |
 | Regras de validação, duplicatas e conflitos | `pipeline/validator.py`, `tests/test_validator.py`, seção "Validação" de `docs/SCHEMA_EXTRACAO.md` |
@@ -92,7 +93,7 @@ Códigos de erro são strings estáveis (`INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, 
 
 ## CI
 
-`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + testes (Vitest) + build do frontend. Depreciação conhecida do `TestClient` com `httpx` vira erro no pytest (`filterwarnings`). Não há deploy (HTTPS/deploy é TODO). Dependabot semanal para pip e npm.
+`.github/workflows/ci.yml` roda em todo PR e push na `main`: bloqueio de PDF/.env versionados, `pytest` com cobertura mínima de 85% (`fail_under` no `pyproject.toml`; Python 3.11 e 3.13, resumo no job), ida e volta das migrations em Postgres de serviço, e lint + testes (Vitest) + build do frontend. Depreciação conhecida do `TestClient` com `httpx` vira erro no pytest (`filterwarnings`). O job de imagem constrói o `Dockerfile` da raiz; o deploy de teste é pelo `render.yaml` (Render), sem deploy automático pelo CI. Dependabot semanal para pip e npm.
 
 ## Antes de concluir uma tarefa
 
