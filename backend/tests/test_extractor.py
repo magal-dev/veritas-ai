@@ -9,6 +9,7 @@ from pipeline.extractor import (
     MAX_VISUAL_TEXT_CHARS,
     MIN_NEIGHBOR_BANDS,
     MIN_VISUAL_BANDS,
+    SHORT_PDF_PAGES,
     LocalDocumentExtractor,
 )
 
@@ -404,6 +405,38 @@ def test_extractor_short_document_sends_every_page(tmp_path: Path):
 
     # Sem o limite, a mesma folha passa pela triagem e não tem candidata.
     assert LocalDocumentExtractor().extract(path).candidate_pages == []
+
+
+def test_short_pdf_triages_text_and_keeps_every_image_page(tmp_path: Path):
+    # Folhas separadas num PDF único: a petição (texto) fica fora; a página sem texto que a
+    # trilha visual recusaria (aqui, só um carimbo; na vida real, foto com fundo) entra.
+    document = fitz.open()
+    _add_text(document, "Peticao inicial - o reclamante requer horas extras e FGTS")
+    _add_scanned(document, _draw_stamp)
+    _draw_time_card(document.new_page())
+    path = _save(document, tmp_path / "folhas.pdf")
+
+    signals = LocalDocumentExtractor().extract(path, keep_visual_up_to=SHORT_PDF_PAGES)
+
+    assert signals.short_document
+    assert not signals.all_pages
+    assert sorted(signals.candidate_pages) == [2, 3]
+
+    # Sem a regra do PDF curto, a página escaneada passa pela trilha visual e fica fora.
+    assert LocalDocumentExtractor().extract(path).candidate_pages == [3]
+
+
+def test_pdf_above_short_limit_keeps_visual_triage(tmp_path: Path):
+    document = fitz.open()
+    _add_scanned(document, _draw_stamp)
+    for _ in range(SHORT_PDF_PAGES):
+        _add_text(document, "Pagina sem relevancia")
+    path = _save(document, tmp_path / "processo.pdf")
+
+    signals = LocalDocumentExtractor().extract(path, keep_visual_up_to=SHORT_PDF_PAGES)
+
+    assert not signals.short_document
+    assert signals.candidate_pages == []
 
 
 def test_extractor_long_document_keeps_triage(tmp_path: Path):

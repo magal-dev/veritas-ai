@@ -94,6 +94,7 @@ def summarize(folder: Path, use_ocr: bool) -> list[dict[str, Any]]:
         marks = _sum(members, "time_cards", "expected_marks")
         empty = _sum(members, "time_cards", "empty_marks")
         wrong = _sum(members, "time_cards", "wrong_marks")
+        date_pending = _sum(members, "time_cards", "date_pending_marks")
         relevant = _sum(members, "triage", "relevant_pages")
         items = _sum(members, "payslips", "expected_items")
         table.append({
@@ -102,9 +103,10 @@ def summarize(folder: Path, use_ocr: bool) -> list[dict[str, Any]]:
             "cases": len(members),
             "triage_recall": _ratio(_sum(members, "triage", "relevant_in_candidates"), relevant),
             "marks": marks,
-            "marks_correct": _ratio(marks - empty - wrong, marks),
+            "marks_correct": _ratio(marks - empty - wrong - date_pending, marks),
             "marks_empty": _ratio(empty, marks),
             "marks_wrong": wrong,
+            "marks_date_pending": date_pending,
             "invented": _sum(members, "time_cards", "hallucinated_fields"),
             "extra_days": _sum(members, "time_cards", "extra_days"),
             "unconfirmed_date_days": _sum(members, "time_cards", "unconfirmed_date_days"),
@@ -125,12 +127,13 @@ def format_table(table: list[dict[str, Any]]) -> str:
         return "-" if value is None else f"{100 * value:.1f}%"
 
     headers = ["layout", "digitalização", "casos", "triagem", "marcações", "corretas", "vazias",
-               "erradas s/ aviso", "inventadas", "datas a conf.", "verbas", "chamadas", "pág. inteiras"]
+               "erradas s/ aviso", "difer. c/ data a conf.", "inventadas", "datas a conf.", "verbas",
+               "chamadas", "pág. inteiras"]
     lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     for row in table:
         cells = [row["layout"], row["scan"], row["cases"], pct(row["triage_recall"]), row["marks"],
-                 pct(row["marks_correct"]), pct(row["marks_empty"]), row["marks_wrong"], row["invented"],
-                 row["unconfirmed_date_days"], pct(row["payslip_recall"]), row["gemini_calls"],
+                 pct(row["marks_correct"]), pct(row["marks_empty"]), row["marks_wrong"],
+                 row.get("marks_date_pending", 0), row["invented"], row["unconfirmed_date_days"], pct(row["payslip_recall"]), row["gemini_calls"],
                  row["pages_sent_whole"]]
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)

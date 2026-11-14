@@ -467,6 +467,40 @@ def test_photos_of_selected_pages_are_all_read():
     assert extraction["unclassified_candidate_pages"] == [1, 2, 3]
 
 
+def test_single_pdf_of_phone_photos_is_read():
+    # Cenário da perita: app de digitalizar do celular gera um PDF único só de fotos. Sem
+    # texto, nenhuma foto passaria pela triagem; no PDF curto todas chegam à camada 3.
+    document = fitz.open()
+    for _ in range(3):
+        page = document.new_page(width=600, height=800)
+        page.insert_image(page.rect, stream=_jpeg_bytes())
+    payload = document.tobytes()
+    document.close()
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/jobs", files={"file": ("digitalizado.pdf", BytesIO(payload), "application/pdf")}
+    )
+    assert response.status_code == 200, response.text
+    extraction = client.get(f"/api/v1/jobs/{response.json()['job_id']}/preview").json()["extraction"]
+    assert extraction["candidate_page_count"] == 3
+    assert extraction["unclassified_candidate_pages"] == [1, 2, 3]
+
+
+def test_short_single_pdf_still_goes_through_triage():
+    # Um PDF único, mesmo curto, pode ser trecho do processo com petição: página com texto
+    # só vai à camada 3 se a triagem aceitar. Aqui nenhuma tem palavra-chave nem padrão.
+    response = TestClient(app).post(
+        "/api/v1/jobs",
+        files={"file": ("trecho.pdf", BytesIO(_pdf_bytes(3)), "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    job_id = response.json()["job_id"]
+    extraction = TestClient(app).get(f"/api/v1/jobs/{job_id}/preview").json()["extraction"]
+    assert extraction["candidate_page_count"] == 0
+    assert extraction["unclassified_candidate_pages"] == []
+
+
 def test_upload_tempfiles_are_removed(monkeypatch):
     removed: list[str] = []
     original = JobService._unlink

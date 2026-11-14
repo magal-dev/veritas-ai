@@ -186,6 +186,30 @@ def test_parse_page_confirms_dates_printed_in_full():
     assert page is not None and page.dates_confirmed
 
 
+def _with_full_dates(lines: list[list[Word]], start: date = START) -> list[list[Word]]:
+    rows = [line for line in lines[2:] if len(line) > 1 and weekday_of(line[1].text)]
+    for offset, line in enumerate(rows):
+        full = f"{start + timedelta(days=offset):%d/%m/%Y}"
+        line[0] = Word(line[0].x, line[0].y, line[0].w, line[0].h, full, line[0].line)
+    return lines
+
+
+def test_parse_page_recovers_misread_period_start_from_full_row_dates():
+    # Foto: "21/07/2025" do cabeçalho lido como "31/07/2025". As linhas trazem a data inteira
+    # e o dia da semana; o período sai delas e as datas ficam confirmadas.
+    page = parse_page(_with_full_dates(_sheet(period="31/07/2025 à 20/08/2025")), page_number=1)
+    assert page is not None and page.dates_confirmed
+    assert page.work_days[0] == "2025-07-21"
+    assert page.work_days[-1] == "2025-08-20"
+
+
+def test_parse_page_keeps_dates_pending_when_rows_do_not_agree():
+    # Datas das linhas incoerentes com o dia da semana: sem maioria, nada é inventado.
+    lines = _with_full_dates(_sheet(period="31/07/2025 à 20/08/2025"), start=START + timedelta(days=3))
+    page = parse_page(lines, page_number=1)
+    assert page is not None and not page.dates_confirmed
+
+
 def test_parse_page_fixes_misread_period_year_from_the_rows():
     # "2025" lido como "2024" no período: o ano impresso nas linhas corrige.
     page = parse_page(_sheet(period="21/07/2024 à 20/08/2024"), page_number=1)

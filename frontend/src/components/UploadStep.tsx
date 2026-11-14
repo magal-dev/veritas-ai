@@ -129,9 +129,10 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-md text-[13px] leading-relaxed text-ink-muted">
-            Até 25 páginas no total, todas são lidas, na ordem do envio. Acima disso, o envio é
-            tratado como processo inteiro: a triagem local separa as folhas de cartão de ponto e
-            holerite e deixa de fora petições e planilhas de cálculo.
+            Fotos ou vários arquivos: até 25 páginas no total, todas são lidas, na ordem do envio.
+            Num PDF único, a triagem local separa as folhas de cartão de ponto e holerite e deixa
+            de fora petições e planilhas de cálculo; até 15 páginas, toda folha digitalizada ou
+            fotografada é lida.
           </p>
           <Button
             type="button"

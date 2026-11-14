@@ -12,9 +12,11 @@ pode ocupar uma vaga restante; o Gemini a classifica como IRRELEVANTE.
 Páginas de cálculo (planilha de liquidação, apuração de horas extras do perito, relatório do
 PJe-Calc) também têm data, horário e valor por linha: com um marcador de cálculo no texto, a
 página sai da triagem do processo inteiro.
-Documento curto (até `MAX_CANDIDATE_PAGES` páginas, ex.: só as folhas do cartão e do
-holerite, ou fotos): o perito já escolheu as páginas, então todas vão para a camada 3 sem
-filtro (`keep_all_up_to`).
+Folhas escolhidas (fotos ou vários arquivos, até `MAX_CANDIDATE_PAGES` páginas): o perito já
+separou as páginas, então o serviço pede que todas vão para a camada 3 sem filtro
+(`keep_all_up_to`). PDF único curto (até `SHORT_PDF_PAGES`, `keep_visual_up_to`): página com
+texto passa pela triagem (a petição fica fora); página sem texto (scan ou foto do celular)
+vai toda. PDF único maior: triagem normal.
 Não persiste texto nem imagem: o pixmap é descartado ao fim de cada página. O tempfile do PDF é responsabilidade do service (unlink no finally).
 """
 
@@ -81,6 +83,10 @@ MIN_PATTERN_HITS = 4
 
 # 25 candidatas = 5 chamadas Gemini x 5 páginas por chamada (classifier.PAGES_PER_CALL).
 MAX_CANDIDATE_PAGES = 25
+# PDF curto (ex.: as folhas que o perito separou, digitalizadas ou fotografadas pelo celular):
+# página com texto passa pela triagem; página sem texto (scan ou foto) vai toda para a camada
+# 3, porque a trilha visual foi calibrada para scans limpos e recusa foto com fundo e sombra.
+SHORT_PDF_PAGES = 15
 # pdfplumber.extract_tables só roda nas páginas mais bem pontuadas.
 TABLE_CHECK_PAGES = 10
 
@@ -139,14 +145,18 @@ class ExtractionSignals:
     candidate_pages: list[int] = field(default_factory=list)
     overflow_candidate_pages: list[int] = field(default_factory=list)
     page_signals: list[PageSignal] = field(default_factory=list)
-    # Documento curto: todas as páginas viraram candidatas, sem triagem.
+    # Folhas escolhidas (fotos ou vários arquivos): todas viraram candidatas, sem triagem.
     all_pages: bool = False
+    # PDF curto: texto passou pela triagem e toda página sem texto virou candidata.
+    short_document: bool = False
 
 
 class DocumentExtractor:
     """Contrato da extração local. Implementação real: PyMuPDF + heurísticas."""
 
-    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
+    def extract(
+        self, pdf_path: Path, *, keep_all_up_to: int = 0, keep_visual_up_to: int = 0
+    ) -> ExtractionSignals:
         raise NotImplementedError
 
 
@@ -290,8 +300,14 @@ def _visual_score(signal: PageSignal) -> float:
 class LocalDocumentExtractor(DocumentExtractor):
     """Camadas 1–2: triagem local sem chamadas à API."""
 
-    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
-        """Triagem do PDF. Com até `keep_all_up_to` páginas, todas viram candidatas."""
+    def extract(
+        self, pdf_path: Path, *, keep_all_up_to: int = 0, keep_visual_up_to: int = 0
+    ) -> ExtractionSignals:
+        """Triagem do PDF.
+
+        Com até `keep_all_up_to` páginas, todas viram candidatas. Com até
+        `keep_visual_up_to`, o texto passa pela triagem e toda página visual vira candidata.
+        """
         started = time.perf_counter()
         try:
             document = fitz.open(pdf_path)
@@ -362,6 +378,16 @@ class LocalDocumentExtractor(DocumentExtractor):
             ranked = _rank(ranked)
 
         visual_ranked = _rank_visual(signals_by_page, ranked)
+        short_document = 0 < page_count <= keep_visual_up_to
+        if short_document:
+            # As visuais com aspecto de tabela vêm primeiro; as demais (fotos que a trilha
+            # visual recusou) entram depois. page_count <= SHORT_PDF_PAGES cabe nas vagas.
+            accepted = {item.page_number for item in visual_ranked}
+            visual_ranked += [
+                signal
+                for signal in signals_by_page.values()
+                if signal.visual and signal.page_number not in accepted
+            ]
 
         # Candidatas de texto têm prioridade; páginas visuais só ocupam as vagas restantes.
         free_slots = MAX_CANDIDATE_PAGES - min(len(ranked), MAX_CANDIDATE_PAGES)
@@ -373,7 +399,7 @@ class LocalDocumentExtractor(DocumentExtractor):
         logger.info(
             "extractor.complete pdf_page_count=%s candidate_page_count=%s overflow_count=%s "
             "table_checked=%s visual_page_count=%s visual_candidate_count=%s "
-            "calculation_page_count=%s duration_ms=%s",
+            "calculation_page_count=%s short_document=%s duration_ms=%s",
             page_count,
             len(candidate_pages),
             len(overflow_pages),
@@ -381,6 +407,7 @@ class LocalDocumentExtractor(DocumentExtractor):
             sum(1 for signal in signals_by_page.values() if signal.visual),
             min(len(visual_ranked), free_slots),
             sum(1 for signal in signals_by_page.values() if signal.calculation),
+            short_document,
             int((time.perf_counter() - started) * 1000),
         )
 
@@ -390,6 +417,7 @@ class LocalDocumentExtractor(DocumentExtractor):
             candidate_pages=candidate_pages,
             overflow_candidate_pages=overflow_pages,
             page_signals=list(signals_by_page.values()),
+            short_document=short_document,
         )
 
     @staticmethod
@@ -471,7 +499,9 @@ def _rank_visual(
 class StubDocumentExtractor(DocumentExtractor):
     """Conta páginas; não extrai texto nem classifica candidatas."""
 
-    def extract(self, pdf_path: Path, *, keep_all_up_to: int = 0) -> ExtractionSignals:
+    def extract(
+        self, pdf_path: Path, *, keep_all_up_to: int = 0, keep_visual_up_to: int = 0
+    ) -> ExtractionSignals:
         try:
             document = fitz.open(pdf_path)
         except Exception as exc:
