@@ -133,8 +133,9 @@ def test_score_time_cards_separates_empty_for_review_from_wrong() -> None:
         update={"ambiguous_fields": ["date", "clock_in"]}
     )
     metrics = score_time_cards(truth, [pending])
-    # Dia de 04/03 ausente: 3 marcações vazias; 01/03: entrada vazia e saída errada.
-    assert (metrics.empty_marks, metrics.wrong_marks) == (4, 1)
+    # Dia de 04/03 ausente: 3 marcações vazias; 01/03: entrada vazia e saída diferente, mas
+    # num dia com a data a confirmar: sinalizada, não conta como erro sem aviso.
+    assert (metrics.empty_marks, metrics.wrong_marks, metrics.date_pending_marks) == (4, 0, 1)
     assert metrics.unconfirmed_date_days == 1
 
 
@@ -239,8 +240,10 @@ def test_main_passes_the_production_time_card_reader(tmp_path: Path, monkeypatch
     printed = capsys.readouterr().out
     assert received["time_card_reader"] is not None
     assert "unrecognized 1" in printed
-    # PDF curto vai inteiro, como em produção: 3 páginas candidatas, nenhuma reconhecida.
-    assert "páginas enviadas inteiras ao Gemini: 3" in printed
+    # PDF único passa pela triagem, como em produção: a petição fica de fora; cartão e
+    # holerite (nenhum reconhecido pelo OCR) vão inteiros.
+    assert "candidatas enviadas: 2" in printed
+    assert "páginas enviadas inteiras ao Gemini: 2" in printed
 
     assert main([str(pdf), str(gabarito), "--no-ocr"]) == 0
     assert received["time_card_reader"] is None

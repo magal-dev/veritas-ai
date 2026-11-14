@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import settings  # noqa: E402
 from pipeline.classifier import StubDocumentClassifier, build_classifier  # noqa: E402
-from pipeline.extractor import MAX_CANDIDATE_PAGES, LocalDocumentExtractor  # noqa: E402
+from pipeline.extractor import SHORT_PDF_PAGES, LocalDocumentExtractor  # noqa: E402
 from pipeline.time_card_ocr import (  # noqa: E402
     LocalTimeCards,
     TimeCardReader,
@@ -219,6 +219,9 @@ class TimeCardMetrics:
     expected_marks: int = 0
     empty_marks: int = 0
     wrong_marks: int = 0
+    # Horário diferente do gabarito num dia com a data a confirmar: não é erro sem aviso (a
+    # data está sinalizada e o dia não exporta antes da revisão), mas também não é acerto.
+    date_pending_marks: int = 0
     unconfirmed_date_days: int = 0
 
 
@@ -232,7 +235,7 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
     expected_dates = {row.date for row in truth.time_cards}
     per_field_ok = {name: 0 for name in TIME_FIELDS}
     per_field_total = {name: 0 for name in TIME_FIELDS}
-    hallucinated = marks = empty = wrong = 0
+    hallucinated = marks = empty = wrong = date_pending = 0
     found = 0
     for row in truth.time_cards:
         entry = by_date.get(row.date)
@@ -249,7 +252,11 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
                 per_field_ok[name] += got == want
                 marks += 1
                 empty += got is None
-                wrong += got is not None and got != want
+                if got is not None and got != want:
+                    if entry is not None and "date" in entry.ambiguous_fields:
+                        date_pending += 1
+                    else:
+                        wrong += 1
 
     total = sum(per_field_total.values())
     correct = sum(per_field_ok.values())
@@ -266,6 +273,7 @@ def score_time_cards(truth: GroundTruth, predicted: Iterable[TimeCardEntry]) -> 
         expected_marks=marks,
         empty_marks=empty,
         wrong_marks=wrong,
+        date_pending_marks=date_pending,
         unconfirmed_date_days=sum(1 for entry in by_date.values() if "date" in entry.ambiguous_fields),
     )
 
@@ -381,8 +389,8 @@ def run(pdf_path: Path, truth: GroundTruth, local_only: bool, use_ocr: bool = Tr
     timings: dict[str, float] = {}
 
     started = time.perf_counter()
-    # Mesmo limite de produção: documento curto (só as folhas escolhidas) vai inteiro.
-    signals = LocalDocumentExtractor().extract(pdf_path, keep_all_up_to=MAX_CANDIDATE_PAGES)
+    # Mesmo caminho de produção para um PDF único (curto: texto triado, imagem vai toda).
+    signals = LocalDocumentExtractor().extract(pdf_path, keep_visual_up_to=SHORT_PDF_PAGES)
     timings["triage"] = time.perf_counter() - started
 
     # Mesmo caminho de produção: cartão escaneado reconhecido passa pelo OCR local.
@@ -466,7 +474,8 @@ def format_report(report: EvaluationReport) -> str:
         + " · ".join(f"{name} {_pct(value)}" for name, value in t.per_field_accuracy.items()),
         f"  dias extras: {t.extra_days} · horários inventados: {t.hallucinated_fields}",
         f"  marcações do documento: {t.expected_marks} · vazias (revisão): {t.empty_marks}"
-        f" · erradas sem aviso: {t.wrong_marks} · dias com data a confirmar: {t.unconfirmed_date_days}",
+        f" · erradas sem aviso: {t.wrong_marks} · diferentes em dia com data a confirmar:"
+        f" {t.date_pending_marks} · dias com data a confirmar: {t.unconfirmed_date_days}",
         "",
         "OCR local do cartão escaneado",
         "  " + (

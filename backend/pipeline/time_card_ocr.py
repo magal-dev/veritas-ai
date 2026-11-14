@@ -33,6 +33,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+from collections import Counter
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -443,6 +444,30 @@ def _assign_days(rows: list[_Row], start: date, end: date) -> tuple[list[date], 
     return period_days, days, False
 
 
+def _start_from_rows(rows: list[_Row]) -> date | None:
+    """Início do período pelas datas completas impressas nas linhas.
+
+    Para o cabeçalho mal lido (foto: "16/08/2025" → "26/08/2025"). Só vale com uma linha por
+    dia: cada linha com data inteira, coerente com o dia da semana lido, vota no início
+    (data - posição). Exige maioria clara; uma folga sem linha divide os votos e nada muda.
+    """
+    votes: Counter[date] = Counter()
+    for index, row in enumerate(rows):
+        found = re.search(r"(\d{2})/(\d{2})/(\d{4})", row.fragment.upper().translate(OCR_DIGITS))
+        if not found:
+            continue
+        try:
+            day = date(int(found[3]), int(found[2]), int(found[1]))
+        except ValueError:
+            continue
+        if WEEKDAYS[day.weekday()] == row.weekday:
+            votes[day - timedelta(days=index)] += 1
+    if not votes:
+        return None
+    start, count = votes.most_common(1)[0]
+    return start if count >= max(MIN_ROWS, 0.8 * len(rows)) else None
+
+
 def _year_shift(rows: list[_Row], days: list[date]) -> int:
     """Anos a somar ao período (-1, 0 ou 1) segundo o ano impresso nas linhas."""
     years: list[tuple[int, date]] = []
@@ -494,6 +519,15 @@ def parse_page(lines: list[list[Word]], page_number: int) -> TimeCardPage | None
     # os meses impressos não bastam/não batem) não descartam a página: ela iria inteira ao
     # Gemini. Os horários seguem lidos aqui e a data vai para a revisão.
     page.dates_confirmed = days[-1] <= end and _dates_agree(rows, days, start, weekdays_count)
+    if not page.dates_confirmed and (row_start := _start_from_rows(rows)) is not None:
+        # Cabeçalho mal lido, linhas legíveis: o período sai das linhas, se passar na mesma
+        # conferência das datas.
+        row_end = row_start + timedelta(days=len(rows) - 1)
+        row_period, row_days, row_weekdays = _assign_days(rows, row_start, row_end)
+        if _dates_agree(rows, row_days, row_start, row_weekdays):
+            start, end = row_start, row_end
+            period_days, days, weekdays_count = row_period, row_days, row_weekdays
+            page.dates_confirmed = True
 
     for row, day in zip(rows, days):
         if _is_day_off(row, columns):

@@ -17,7 +17,7 @@ from core.config import settings
 from core.logging import logger
 from models.processing_run import RunStatus
 from pipeline.classifier import DocumentClassifier, build_classifier
-from pipeline.extractor import MAX_CANDIDATE_PAGES, LocalDocumentExtractor
+from pipeline.extractor import MAX_CANDIDATE_PAGES, SHORT_PDF_PAGES, LocalDocumentExtractor
 from pipeline.pjecalc_exporter import PjeCalcExporter
 from pipeline.time_card_ocr import build_time_card_reader
 from pipeline.validator import SchemaExtractionValidator, is_derived_conflict
@@ -29,8 +29,10 @@ from services.upload_bundle import UploadedFile, assemble_pdf, detect_kind
 
 # Arquivos por envio (fotos das folhas ou PDFs); o tamanho total segue MAX_UPLOAD_MB.
 MAX_UPLOAD_FILES = 60
-# Até este total de páginas o envio é tratado como páginas escolhidas pelo perito (só o
-# cartão e o holerite, ou fotos): todas vão para a camada 3, sem triagem.
+# Fotos ou vários arquivos são folhas que o perito separou à mão: até este total de páginas,
+# todas vão para a camada 3, sem triagem (a triagem recusaria fotos com fundo e sombra).
+# PDF único curto (até SHORT_PDF_PAGES): o texto passa pela triagem, para a petição não ir ao
+# Gemini, e toda página sem texto (scan ou foto do celular) vai. PDF maior: triagem normal.
 SELECTED_PAGES_LIMIT = MAX_CANDIDATE_PAGES
 
 
@@ -97,7 +99,8 @@ class JobService:
                 path = await self._write_temp_file(upload, budget, ".pdf" if kind == "pdf" else ".img")
                 tmp_paths.append(path)
                 saved.append(UploadedFile(path=path, kind=kind))
-            if len(saved) == 1 and saved[0].kind == "pdf":
+            single_pdf = len(saved) == 1 and saved[0].kind == "pdf"
+            if single_pdf:
                 pdf_path = saved[0].path
             else:
                 pdf_path = self._new_temp_path(".pdf")
@@ -105,7 +108,10 @@ class JobService:
                 await asyncio.to_thread(assemble_pdf, saved, pdf_path)
 
             signals = await asyncio.to_thread(
-                self._extractor.extract, pdf_path, keep_all_up_to=SELECTED_PAGES_LIMIT
+                self._extractor.extract,
+                pdf_path,
+                keep_all_up_to=0 if single_pdf else SELECTED_PAGES_LIMIT,
+                keep_visual_up_to=SHORT_PDF_PAGES if single_pdf else 0,
             )
             outcome = await asyncio.to_thread(self._classifier.classify, pdf_path, signals)
 
@@ -144,6 +150,7 @@ class JobService:
             classified_count=len(extraction.classifications),
             has_api_key=bool(settings.gemini_api_key.strip()),
             all_pages=signals.all_pages,
+            short_document=signals.short_document,
             extracted_count=len(extraction.time_cards) + len(extraction.payslips),
         )
 
@@ -324,6 +331,7 @@ def _build_pipeline_note(
     classified_count: int,
     has_api_key: bool,
     all_pages: bool = False,
+    short_document: bool = False,
     extracted_count: int = 0,
 ) -> str:
     if not has_api_key:
@@ -347,6 +355,11 @@ def _build_pipeline_note(
             f"Todas as {candidate_count} página(s) enviada(s) foram lidas, mas nenhuma foi "
             "reconhecida como cartão de ponto ou holerite. Confira se as fotos estão nítidas, "
             "inteiras e em pé."
+        )
+    if short_document and extracted_count == 0:
+        return (
+            f"{candidate_count} página(s) lida(s), mas nenhuma foi reconhecida como cartão de "
+            "ponto ou holerite. Confira se as folhas estão nítidas, inteiras e em pé."
         )
     if all_pages:
         return (
