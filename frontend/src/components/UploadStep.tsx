@@ -87,7 +87,7 @@ export function UploadStep({ busy, error, onSubmit }: UploadStepProps) {
               : 'Escolha os arquivos ou solte-os aqui'}
           </span>
           <span className="eyebrow text-ink-muted">
-            PDF ou fotos (JPG, PNG) · vários de uma vez · até {MAX_UPLOAD_MB} MB no total
+            PDF ou fotos (JPG, PNG ou WEBP) · vários de uma vez · até {MAX_UPLOAD_MB} MB no total
           </span>
           <input
             id={inputId}
